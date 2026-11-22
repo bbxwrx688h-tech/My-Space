@@ -45,18 +45,19 @@ The ignored local configuration points to a private PostgreSQL cluster under `.l
 | ADMIN_USERNAME / ADMIN_PASSWORD | Used to bootstrap the first local administrator. Startup preserves the existing salted password hash and role assignments. Choose a unique deployment password before initializing that database. |
 | CONFIRMATION_SECRET | Shared secret for signing short-lived meeting confirmations. All API instances must use the same value. |
 
-Deploy `dist/`, `server/db/*.sql`, the package manifest and lockfile. Install runtime dependencies with `npm ci --omit=dev` and run from the project root. Keep the database on persistent storage with the office’s normal backup policy. For the AD FS integration, replace the placeholder in `server/auth/auth.controller.ts` with the organization’s redirect/callback flow. Validate the provider response on the server, then call `resolveIdentity('adfs', { name, surname, UPN })` followed by `signIn`. The identity adapter updates names on return visits and retains the employee’s role and bookings.
+Deploy `dist/`, `server/db/*.sql`, the package manifest and lockfile. Install runtime dependencies with `npm ci --omit=dev` and run from the project root. Keep the database on persistent storage with the office’s normal backup policy. For the AD FS integration, replace the placeholder in `server/controllers/auth.controller.ts` with the organization’s redirect/callback flow. Validate the provider response on the server, then call `resolveIdentity('adfs', { name, surname, UPN })` followed by `signIn`. The identity adapter updates names on return visits and retains the employee’s role and bookings.
 
 ## Project map
 
 | Path | Responsibility |
 | --- | --- |
 | `shared/model.ts` | Types used by the API and React UI. |
-| `server/auth/` | Login options, session cookies, AD FS adapter boundary and local password verification. |
+| `server/controllers/` | HTTP endpoints for authentication, workspace, meetings and stations. |
+| `server/auth/` | Session cookies, AD FS adapter boundary and local password verification. |
 | `server/db/` | Versioned SQL, connection pool, transaction handling and bootstrap. |
 | `server/meetings/` | Jerusalem time validation, room-level locking and signed override reviews. |
-| `server/stations/` | Station registration, publishing and daily reservation changes. |
-| `server/workspace.controller.ts` | Home/marketplace reads, onboarding, notifications and role management. |
+| `server/stations/` | Shared station creation logic. |
+| `server/controllers/workspace.controller.ts` | Home/marketplace reads, onboarding, notifications and role management. |
 | `web/src/pages/` | Sign-in, onboarding and the three main destinations. |
 | `web/src/components/` | Hebrew date picker, booking dialogs, account controls and shared fields. |
 | `tests/` | PostgreSQL-backed API tests and multi-account browser journeys. |

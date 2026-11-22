@@ -65,6 +65,7 @@ export function App() {
   const authenticated = !!data;
   useEffect(() => {
     if (!authenticated) return;
+    // Refresh availability and notices periodically and when returning to the tab.
     const poll = () => {
       if (!document.hidden) void refresh();
     };

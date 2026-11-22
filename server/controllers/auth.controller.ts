@@ -13,9 +13,9 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { pool } from '../db/connection';
 import { parse } from '../validation';
-import { resolveIdentity } from './identity';
-import { matchesPassword } from './password';
-import { devEnabled, signIn, signOut } from './session';
+import { resolveIdentity } from '../auth/identity';
+import { matchesPassword } from '../auth/password';
+import { devEnabled, signIn, signOut } from '../auth/session';
 
 const devPeople = [
   { name: 'נועה', surname: 'לוי', UPN: 'noa@example.test' },

@@ -45,7 +45,8 @@ export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
       username: 'שם משתמש',
       password: 'סיסמה',
     };
-    const field = String(result.error.issues[0]?.path[0] ?? '');
+    const path = result.error.issues[0]?.path ?? [];
+    const field = String([...path].reverse().find((part) => labels[String(part)]) ?? '');
     throw new BadRequestException(
       labels[field]
         ? `יש לבדוק את השדה ${labels[field]}`

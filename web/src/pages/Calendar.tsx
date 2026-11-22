@@ -33,6 +33,8 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
     };
   }, [start, roomId, data]);
   const first = local(start);
+  // Regular employees can book through the same date in the following month.
+  // Bosses retain access to later weeks.
   const lastAllowed = data.me.role === 'boss' ? undefined : now().plus({ months: 1 }).toISODate()!;
   function navigate(days: number) {
     setMeetings([]);
@@ -82,7 +84,11 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
           >
             הקודם
           </Button>
-          <Button sx={buttonSx} onClick={() => navigate(7)}>
+          <Button
+            sx={buttonSx}
+            disabled={!!lastAllowed && first.plus({ days: 7 }).toISODate()! > lastAllowed}
+            onClick={() => navigate(7)}
+          >
             הבא
           </Button>
         </Box>
@@ -198,7 +204,7 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
                           sx={{
                             position: 'absolute',
                             top: (begin.hour * 60 + begin.minute) * 0.8,
-                            height: Math.max(24, duration * 0.8),
+                            height: duration * 0.8,
                             insetInline: 3,
                             display: 'block',
                             textAlign: 'start',

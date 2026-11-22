@@ -16,10 +16,11 @@ import { Meeting, Person } from '../../shared/model';
 import { Employee, SessionGuard } from '../auth/session';
 import { notify, pool, transaction } from '../db/connection';
 import { date, description, id, parse, shortText, zone } from '../validation';
-import { interval, meetingSelect } from './schedule';
-import { requireReview } from './review';
+import { interval, meetingSelect } from '../meetings/schedule';
+import { requireReview } from '../meetings/review';
 
 const time = z.string().regex(/^([01]\d|2[0-3]):(00|15|30|45)$/);
+// A change includes its target version so edits cannot silently overwrite newer edits.
 const fields = z.object({
   roomId: id,
   date,
@@ -62,6 +63,8 @@ export class MeetingsController {
         change.roomId,
       ]);
       if (!room.rowCount) throw new NotFoundException('חדר הישיבות לא נמצא');
+      // Read the role again inside the transaction in case an admin changed it
+      // after this request's session was authenticated.
       const actor = (
         await db.query<Person>('SELECT * FROM people WHERE id=$1 FOR SHARE', [requester.id])
       ).rows[0];
@@ -86,6 +89,7 @@ export class MeetingsController {
         change.action === 'cancel'
           ? null
           : interval(change, actor.role, undefined, original?.start);
+      // Intervals are half-open: a meeting can start exactly when another ends.
       const overlaps = times
         ? (
             await db.query<Meeting>(
@@ -100,8 +104,10 @@ export class MeetingsController {
         throw new ConflictException('חדר הישיבות תפוס במועד שנבחר');
       const affected =
         original && original.organizerId !== actor.id ? [original, ...overlaps] : overlaps;
+      // Confirmation is tied to this action and the current versions of affected meetings.
       requireReview(actor, change, affected, token);
 
+      // Cancellation, notifications and the replacement meeting commit together.
       for (const meeting of overlaps) {
         await db.query('DELETE FROM meetings WHERE id=$1', [meeting.id]);
         if (meeting.organizerId !== actor.id)

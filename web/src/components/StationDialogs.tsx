@@ -17,7 +17,13 @@ import { DateField, ErrorLine, Field, Modal, useAction } from './Fields';
 import { StationFields, stationFrom } from './StationFields';
 
 type Props = { data: Workspace; close: () => void; saved: () => Promise<void> };
-export function PublishDialog({ data, close, saved, add }: Props & { add: boolean }) {
+export function PublishDialog({
+  data,
+  close,
+  saved,
+  add,
+  onAdded,
+}: Props & { add: boolean; onAdded?: () => void }) {
   const [start, setStart] = useState(now().toISODate()!);
   const [end, setEnd] = useState(start);
   const [stationId, setStationId] = useState(data.stations[0]?.id || 0);
@@ -36,7 +42,8 @@ export function PublishDialog({ data, close, saved, add }: Props & { add: boolea
             if (add) await api('stations', stationFrom(form));
             else await api('stations/offers', { stationId, start, end, note: form.get('note') });
             await saved();
-            close();
+            if (add && onAdded) onAdded();
+            else close();
           });
         }}
       >
@@ -115,6 +122,8 @@ export function DaysDialog({
   const myDates = new Set(
     data.offers.flatMap((o) => o.days.filter((d) => d.status === 'mine').map((d) => d.date)),
   );
+  // Booking is per day. A borrower cannot select a second station for a day
+  // already booked elsewhere, while an owner may withdraw booked days.
   const days = offer.days.filter(
     (d) =>
       d.date >= now().toISODate()! &&

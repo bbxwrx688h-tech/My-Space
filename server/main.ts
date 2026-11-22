@@ -5,11 +5,11 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import rateLimit from '@fastify/rate-limit';
-import { AuthController } from './auth/auth.controller';
+import { AuthController } from './controllers/auth.controller';
 import { SessionGuard } from './auth/session';
-import { MeetingsController } from './meetings/meetings.controller';
-import { StationsController } from './stations/stations.controller';
-import { WorkspaceController } from './workspace.controller';
+import { MeetingsController } from './controllers/meetings.controller';
+import { StationsController } from './controllers/stations.controller';
+import { WorkspaceController } from './controllers/workspace.controller';
 import { migrate } from './db/migrate';
 
 @Module({

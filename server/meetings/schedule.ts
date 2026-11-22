@@ -21,6 +21,7 @@ export function interval(
   };
   const start = parseTime(input.from);
   const end = parseTime(input.until);
+  // An ongoing meeting may be edited without moving its original start time.
   const keepsOngoingStart = originalStart && start.toMillis() === new Date(originalStart).getTime();
   if (
     [5, 6].includes(day.weekday) ||

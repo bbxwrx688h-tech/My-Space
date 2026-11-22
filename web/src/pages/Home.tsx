@@ -16,7 +16,7 @@ import { ReactNode, useState } from 'react';
 import { CalendarDays, ChevronLeft, FileText, Monitor } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
 import { clock, fullDate, now } from '../dates';
-import { DaysDialog, offerRange } from '../components/StationDialogs';
+import { DaysDialog, offerRange, PublishDialog } from '../components/StationDialogs';
 import { MeetingDialog } from '../components/MeetingDialog';
 
 const featureSx = {
@@ -104,6 +104,7 @@ function Activity({
 export function Home({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [activity, setActivity] = useState(0);
+  const [stationDialog, setStationDialog] = useState<'add' | 'publish' | null>(null);
   const [days, setDays] = useState<{ id: number; mode: 'release' | 'withdraw' } | null>(null);
   const offer = data.offers.find((o) => o.id === days?.id);
   return (
@@ -134,23 +135,32 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
               חיפוש והזמנה של עמדת עבודה לפי אתר ותאריך.
             </Typography>
           </Box>
-          <Button
+          <Box
             sx={{
-              ...buttonSx,
               gridColumn: '1/-1',
-              justifySelf: 'start',
-              alignSelf: 'end',
-              minWidth: 'min(235px,100%)',
-              minHeight: 47,
-              fontSize: '1.14rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              alignItems: 'center',
             }}
-            variant="contained"
-            color="secondary"
-            href="#stations"
-            endIcon={<ChevronLeft />}
           >
-            לבחירת עמדה
-          </Button>
+            <Button
+              sx={{ ...buttonSx, minHeight: 47, fontSize: '1.14rem' }}
+              variant="contained"
+              color="secondary"
+              href="#stations"
+              endIcon={<ChevronLeft />}
+            >
+              לבחירת עמדה
+            </Button>
+            <Button
+              sx={{ ...buttonSx, minHeight: 47, color: 'inherit', borderColor: 'currentColor' }}
+              variant="outlined"
+              onClick={() => setStationDialog(data.stations.length ? 'publish' : 'add')}
+            >
+              פרסום הצעה לעמדה שלי
+            </Button>
+          </Box>
         </Box>
         <Box
           component="section"
@@ -264,6 +274,16 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
           meeting={meeting}
           close={() => setMeeting(null)}
           saved={saved}
+        />
+      )}
+      {stationDialog && (
+        <PublishDialog
+          key={stationDialog}
+          data={data}
+          close={() => setStationDialog(null)}
+          saved={saved}
+          add={stationDialog === 'add'}
+          onAdded={() => setStationDialog('publish')}
         />
       )}
       {offer && days && (

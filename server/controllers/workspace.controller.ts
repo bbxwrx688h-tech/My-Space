@@ -9,12 +9,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { Person } from '../shared/model';
-import { Employee, personColumns, SessionGuard } from './auth/session';
-import { pool, transaction } from './db/connection';
-import { meetingSelect } from './meetings/schedule';
-import { addStation } from './stations/stations.controller';
-import { id, parse, site, stationFields, today } from './validation';
+import { Person } from '../../shared/model';
+import { Employee, personColumns, SessionGuard } from '../auth/session';
+import { pool, transaction } from '../db/connection';
+import { meetingSelect } from '../meetings/schedule';
+import { addStation } from '../stations/station';
+import { id, parse, site, stationFields, today } from '../validation';
 
 const stationSelect = `SELECT s.id,s.owner_id AS "ownerId",p.name || ' ' || p.surname AS owner,
   s.site,s.room,s.os,s.description FROM stations s JOIN people p ON p.id=s.owner_id`;
@@ -26,6 +26,8 @@ export class WorkspaceController {
     const [rooms, stations, offers, meetings, notices] = await Promise.all([
       pool.query('SELECT * FROM rooms ORDER BY site,name'),
       pool.query(stationSelect + ' WHERE s.owner_id=$1 ORDER BY s.id', [me.id]),
+      // Offers are returned across every site. A home site does not limit where
+      // an employee may borrow a station.
       // Other borrowers stay anonymous. The viewer can recognize their own bookings.
       pool.query(
         `SELECT o.id,o.note,to_jsonb(station) AS station,
@@ -56,6 +58,7 @@ export class WorkspaceController {
   @Post('onboarding') onboard(@Employee() me: Person, @Body() body: unknown) {
     const input = parse(z.object({ site, station: stationFields.optional() }), body);
     return transaction(async (db) => {
+      // Updating only an unset site makes onboarding safe against repeat submissions.
       const result = await db.query('UPDATE people SET site=$2 WHERE id=$1 AND site IS NULL', [
         me.id,
         input.site,
@@ -68,6 +71,7 @@ export class WorkspaceController {
 
   @Post('notices/read') async markRead(@Employee() me: Person, @Body() body: unknown) {
     const { through } = parse(z.object({ through: id }), body);
+    // Newer notifications that arrived after the screen loaded remain unread.
     await pool.query('UPDATE notices SET seen=true WHERE person_id=$1 AND id<=$2 AND NOT seen', [
       me.id,
       through,

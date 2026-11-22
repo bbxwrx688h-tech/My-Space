@@ -8,27 +8,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { PoolClient } from 'pg';
 import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { Person } from '../../shared/model';
 import { Employee, SessionGuard } from '../auth/session';
 import { notify, transaction } from '../db/connection';
 import { date, id, parse, selectedDays, stationFields, today } from '../validation';
-
-export async function addStation(
-  db: PoolClient,
-  owner: number,
-  station: z.infer<typeof stationFields>,
-) {
-  const { site, room, os, description } = station;
-  return (
-    await db.query(
-      'INSERT INTO stations(owner_id,site,room,os,description) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [owner, site, room, os, description],
-    )
-  ).rows[0];
-}
+import { addStation } from '../stations/station';
 
 @Controller('stations')
 @UseGuards(SessionGuard)
@@ -53,6 +39,7 @@ export class StationsController {
         [stationId, note],
       );
       const offerId = offer.rows[0].id;
+      // Each offered day is separate, allowing partial booking and withdrawal.
       await db.query(
         `INSERT INTO offer_days(offer_id,station_id,day)
         SELECT $1,$2,$3::date+n FROM generate_series(0,$4::date-$3::date) n`,
@@ -86,6 +73,8 @@ export class StationsController {
         throw new ForbiddenException('רק הבעלים יכולים להסיר ימים');
       if (action === 'book' && me.id === offer.owner_id)
         throw new BadRequestException('זו העמדה שלך');
+      // Station ownership and the employee's home site do not limit borrowing
+      // another employee's station, including one at a different site.
       // A borrower can book different stations concurrently. Serialize their
       // multi-day writes before acquiring station-day locks in date order.
       if (action === 'book')
@@ -99,6 +88,7 @@ export class StationsController {
       if (rows.length !== days.length)
         throw new ConflictException('אחד הימים שנבחרו כבר אינו מוצע');
       if (action === 'withdraw') {
+        // Notify each affected borrower before deleting the corresponding day.
         for (const row of rows) {
           if (row.borrower_id) {
             const day = DateTime.fromISO(row.day).toFormat('dd/MM/yy');
@@ -123,6 +113,7 @@ export class StationsController {
           [offerId, days, action === 'book' ? me.id : null],
         );
         if (action === 'book') {
+          // The owner's notice is written in the same transaction as the booking.
           const dates = [...days].sort().map((day) => DateTime.fromISO(day).toFormat('dd/MM/yy'));
           await notify(
             db,

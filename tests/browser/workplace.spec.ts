@@ -41,17 +41,18 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await dev(page, 'noa');
+  await page.getByLabel(/אתר/).selectOption('MBT');
   await page.getByLabel('יש לי עמדה', { exact: true }).check();
   await page.getByLabel('מספר חדר').fill('204');
   await page.getByLabel('תיאור העמדה').fill('עמדה ליד החלון');
   await page.getByRole('button', { name: 'המשך לסביבת העבודה' }).click();
   await expect(page.getByRole('heading', { name: 'שלום, נועה' })).toBeVisible();
-  await page.getByRole('link', { name: 'לבחירת עמדה' }).click();
-  await page.getByRole('button', { name: 'פרסום הצעה' }).click();
+  await page.getByRole('button', { name: 'פרסום הצעה לעמדה שלי' }).click();
   const publish = page.getByRole('dialog', { name: 'פרסום הצעה' });
   await selectDate(page, 'עד תאריך', today.plus({ days: 4 }));
   await publish.getByRole('button', { name: 'פרסום הצעה' }).click();
   await expect(publish).toHaveCount(0);
+  await page.getByRole('link', { name: 'לבחירת עמדה' }).click();
   await expect(
     page.getByRole('article').getByText('עמדה ליד החלון', { exact: true }),
   ).toBeVisible();
@@ -74,6 +75,10 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   await expect(page.getByRole('button', { name: /תכנון שבועי/ })).toBeVisible();
   await page.getByRole('button', { name: 'הקודם', exact: true }).click();
   await expect(page.getByRole('button', { name: 'הקודם', exact: true })).toBeDisabled();
+  // The final accessible week contains the one-month booking boundary.
+  const nextWeek = page.getByRole('button', { name: 'הבא', exact: true });
+  for (let week = 0; week < 6 && (await nextWeek.isEnabled()); week++) await nextWeek.click();
+  await expect(nextWeek).toBeDisabled();
   await capture(page, 'calendar.png');
 
   // A second employee offers a different computer in the same physical room.
@@ -92,6 +97,7 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   });
   await page.reload();
   await page.getByRole('link', { name: 'עמדות עבודה', exact: true }).click();
+  await page.getByLabel(/אתר/).selectOption('MID');
   await selectDate(page, 'מתאריך', today);
   await selectDate(page, 'עד תאריך', today.plus({ days: 6 }));
   const card = page.getByRole('article').filter({ hasText: 'עמדה עם שני מסכים' });
@@ -223,7 +229,7 @@ test('an employee adds a station later and withdraws a reserved day while anothe
   await post(borrower, 'stations/days', {
     action: 'book',
     offerId: offer.id,
-    days: [today.toISODate()],
+    days: [today.toISODate(), today.plus({ days: 1 }).toISODate()],
   });
   await page.reload();
   await page
@@ -231,13 +237,36 @@ test('an employee adds a station later and withdraws a reserved day while anothe
     .filter({ hasText: 'שולחן ליד הדלת הירוקה' })
     .getByRole('button', { name: 'ניהול ההצעה' })
     .click();
-  await page.getByRole('checkbox', { name: /העמדה מוזמנת/ }).check();
+  await page
+    .getByRole('checkbox', { name: /העמדה מוזמנת/ })
+    .first()
+    .check();
   await page.getByRole('button', { name: 'אישור הסרה (1)' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const after = await (await borrower.request.get('/api/workspace')).json();
   expect(after.offers.find((o: { id: number }) => o.id === offer.id).days).toEqual([
-    { date: today.plus({ days: 1 }).toISODate(), status: 'available' },
+    { date: today.plus({ days: 1 }).toISODate(), status: 'mine' },
   ]);
   expect(after.notices.some((n: { message: string }) => n.message.includes('42'))).toBeTruthy();
   await borrower.close();
+});
+
+test('the home offer action continues to publishing after registering a first station', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'כניסת מנהל מערכת' }).click();
+  await page.getByLabel('שם משתמש').fill('admin');
+  await page.getByLabel('סיסמה').fill('local-test-password');
+  await page.getByRole('button', { name: 'כניסה', exact: true }).click();
+  await page.getByRole('button', { name: 'פרסום הצעה לעמדה שלי' }).click();
+  const registration = page.getByRole('dialog', { name: 'הוספת עמדה' });
+  await registration.getByLabel('מספר חדר').fill('101');
+  await registration.getByLabel('תיאור העמדה').fill('עמדת בדיקה');
+  await registration.getByRole('button', { name: 'הוספת עמדה' }).click();
+  const publish = page.getByRole('dialog', { name: 'פרסום הצעה' });
+  await expect(publish).toBeVisible();
+  await expect(publish.getByLabel('העמדה שלי')).toContainText('עמדת בדיקה');
+  await publish.getByRole('button', { name: 'פרסום הצעה' }).click();
+  await expect(publish).toHaveCount(0);
 });

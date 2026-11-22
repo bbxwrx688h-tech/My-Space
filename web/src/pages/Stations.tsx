@@ -24,11 +24,16 @@ export function Stations({ data, saved }: { data: Workspace; saved: () => Promis
   const close = () => setDialog(null);
   const offer = data.offers.find((o) => o.id === dialog);
   const badRange = !!from && !!to && from > to;
+  // Filter the latest workspace snapshot locally. Owners can still manage an
+  // offer when all of its matching days have been booked.
   const offers = data.offers.filter(
     (o) =>
       (!site || o.station.site === site) &&
       o.days.some(
-        (d) => (!from || d.date >= from) && (!to || d.date <= to) && d.status === 'available',
+        (d) =>
+          (!from || d.date >= from) &&
+          (!to || d.date <= to) &&
+          (o.station.ownerId === data.me.id || d.status === 'available'),
       ),
   );
   return (

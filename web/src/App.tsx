@@ -20,11 +20,17 @@ import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Onboarding } from './pages/Onboarding';
 import { Stations } from './pages/Stations';
+import { Users } from './pages/Users';
 import { clock, shortDate } from './dates';
 
 const shellWidth = { width: { xs: '94%', sm: 'min(92%,1440px)' }, mx: 'auto' } as const;
 
-const pages = { home: 'בית', stations: 'עמדות עבודה', calendar: 'חדר ישיבות' };
+const pages = {
+  home: 'בית',
+  stations: 'עמדות עבודה',
+  calendar: 'חדר ישיבות',
+  users: 'ניהול משתמשים',
+};
 function currentPage() {
   const hash = location.hash.slice(1);
   return Object.hasOwn(pages, hash) ? (hash as keyof typeof pages) : 'home';
@@ -152,27 +158,29 @@ export function App() {
             }}
             aria-label="ניווט ראשי"
           >
-            {Object.entries(pages).map(([key, label]) => (
-              <Link
-                sx={{
-                  color: 'inherit',
-                  bgcolor: page === key ? 'primary.main' : 'transparent',
-                  textDecoration: 'none',
-                  p: '10px 23px',
-                  borderRadius: '8px',
-                  fontSize: '1.14rem',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  '&:hover': { bgcolor: 'primary.main', color: 'primary.contrastText' },
-                  '@media (max-width:800px)': { p: 1, fontSize: '1rem' },
-                }}
-                key={key}
-                href={'#' + key}
-                aria-current={page === key ? 'page' : undefined}
-              >
-                {label}
-              </Link>
-            ))}
+            {Object.entries(pages)
+              .filter(([key]) => key !== 'users' || data.me.role === 'admin')
+              .map(([key, label]) => (
+                <Link
+                  sx={{
+                    color: 'inherit',
+                    bgcolor: page === key ? 'primary.main' : 'transparent',
+                    textDecoration: 'none',
+                    p: '10px 23px',
+                    borderRadius: '8px',
+                    fontSize: '1.14rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    '&:hover': { bgcolor: 'primary.main', color: 'primary.contrastText' },
+                    '@media (max-width:800px)': { p: 1, fontSize: '1rem' },
+                  }}
+                  key={key}
+                  href={'#' + key}
+                  aria-current={page === key ? 'page' : undefined}
+                >
+                  {label}
+                </Link>
+              ))}
           </Box>
           <Box sx={{ ...rowSx, marginInlineStart: 'auto' }}>
             <IconButton
@@ -213,8 +221,12 @@ export function App() {
           <Home data={data} saved={saved} />
         ) : page === 'stations' ? (
           <Stations data={data} saved={saved} />
-        ) : (
+        ) : page === 'calendar' ? (
           <Calendar data={data} saved={saved} />
+        ) : data.me.role === 'admin' ? (
+          <Users />
+        ) : (
+          <Home data={data} saved={saved} />
         )}
       </Box>
       {panel === 'account' && (

@@ -1,8 +1,6 @@
-import { Box, Button, NativeSelect, Popover, Typography } from '@mui/material';
-import { stackSx, rowSx, buttonSx, selectSx } from '../layout';
-import { useEffect, useState } from 'react';
+import { Box, Button, Popover, Typography } from '@mui/material';
+import { stackSx, buttonSx } from '../layout';
 import { Person } from '../../../shared/model';
-import { api } from '../api';
 import { ErrorLine, useAction } from './Fields';
 
 export function Account({
@@ -16,15 +14,7 @@ export function Account({
   close: () => void;
   logout: () => Promise<void>;
 }) {
-  const [users, setUsers] = useState<Person[]>([]);
-  const [error, setError] = useState('');
   const action = useAction();
-  useEffect(() => {
-    if (me.role === 'admin')
-      api<Person[]>('admin/users')
-        .then(setUsers)
-        .catch((e) => setError(e.message));
-  }, [me.role]);
   return (
     <Popover
       open
@@ -33,55 +23,20 @@ export function Account({
       anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       transformOrigin={{ vertical: 'top', horizontal: 'left' }}
     >
-      <Box
-        sx={{ ...stackSx, p: 2, width: 340, maxWidth: '90vw', maxHeight: '70vh', overflow: 'auto' }}
-      >
+      <Box sx={{ ...stackSx, p: 2, width: 340, maxWidth: '90vw' }}>
         <strong>
           {me.name} {me.surname}
         </strong>
-        <Typography variant="body1">
+        <Typography>
           <bdi>{me.upn}</bdi> · {me.site} ·{' '}
           {{ user: 'עובד/ת', boss: 'מנהל/ת', admin: 'מנהל מערכת' }[me.role]}
         </Typography>
         {me.role === 'admin' && (
-          <>
-            <Typography variant="h3">ניהול תפקידים</Typography>
-            {users.length === 0 && (
-              <Typography variant="body1">עדיין אין עובדים רשומים.</Typography>
-            )}
-            {users.map((p) => (
-              <Box component="label" sx={{ ...rowSx, justifyContent: 'space-between' }} key={p.id}>
-                <Box component="span">
-                  {p.name} {p.surname}{' '}
-                  <Typography
-                    variant="inherit"
-                    component="small"
-                    sx={{ color: 'text.secondary', fontSize: '.83em' }}
-                  >
-                    <bdi>{p.upn}</bdi>
-                  </Typography>
-                </Box>
-                <NativeSelect
-                  disableUnderline
-                  sx={{ ...selectSx, width: 'auto' }}
-                  value={p.role}
-                  disabled={action.busy}
-                  onChange={(e) => {
-                    const role = e.target.value as 'boss' | 'user';
-                    void action.run(async () => {
-                      await api('admin/role', { personId: p.id, role });
-                      setUsers((prev) => prev.map((u) => (u.id === p.id ? { ...u, role } : u)));
-                    });
-                  }}
-                >
-                  <option value="user">עובד/ת</option>
-                  <option value="boss">מנהל/ת</option>
-                </NativeSelect>
-              </Box>
-            ))}
-          </>
+          <Button sx={buttonSx} href="#users" onClick={close}>
+            ניהול משתמשים
+          </Button>
         )}
-        <ErrorLine error={action.error || error} />
+        <ErrorLine error={action.error} />
         <Button sx={buttonSx} variant="outlined" onClick={() => action.run(logout)}>
           יציאה מהמערכת
         </Button>

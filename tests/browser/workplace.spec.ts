@@ -47,6 +47,10 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   await page.getByLabel('תיאור העמדה').fill('עמדה ליד החלון');
   await page.getByRole('button', { name: 'המשך לסביבת העבודה' }).click();
   await expect(page.getByRole('heading', { name: 'שלום, נועה' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'ניהול משתמשים' })).toHaveCount(0);
+  await page.goto('/#users');
+  await expect(page.getByRole('heading', { name: 'ניהול משתמשים' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'שלום, נועה' })).toBeVisible();
   await page.getByRole('button', { name: 'פרסום הצעה לעמדה שלי' }).click();
   const publish = page.getByRole('dialog', { name: 'פרסום הצעה' });
   await selectDate(page, 'עד תאריך', today.plus({ days: 4 }));
@@ -161,11 +165,15 @@ test('admin manages roles and a boss explicitly confirms a protected override af
   await page.getByRole('button', { name: 'כניסה', exact: true }).click();
   await page.getByLabel('אני מחפש/ת עמדה').check();
   await page.getByRole('button', { name: 'המשך לסביבת העבודה' }).click();
-  await page.getByRole('button', { name: 'החשבון שלי' }).click();
+  await page.getByRole('link', { name: 'ניהול משתמשים', exact: true }).click();
+  await page.getByLabel('חיפוש לפי שם או כתובת דוא״ל').fill('אורי');
+  await expect(page.getByLabel(/תפקיד תמר ברק/)).toHaveCount(0);
   await page.getByLabel(/אורי כהן/).selectOption('boss');
+  await page.getByLabel('חיפוש לפי שם או כתובת דוא״ל').fill('תמר');
   await expect(page.getByLabel(/תמר ברק/)).toBeEnabled();
   await page.getByLabel(/תמר ברק/).selectOption('boss');
-  await expect(page.getByLabel(/אורי כהן/)).toBeEnabled();
+  await expect(page.getByLabel(/תמר ברק/)).toBeEnabled();
+  await page.getByRole('button', { name: 'החשבון שלי' }).click();
   await page.getByRole('button', { name: 'יציאה מהמערכת' }).click();
 
   const state = await (await a.request.get('/api/workspace')).json();
@@ -269,4 +277,50 @@ test('the home offer action continues to publishing after registering a first st
   await expect(publish.getByLabel('העמדה שלי')).toContainText('עמדת בדיקה');
   await publish.getByRole('button', { name: 'פרסום הצעה' }).click();
   await expect(publish).toHaveCount(0);
+});
+
+test('the user directory can recover from a failed load and paginate search results', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'כניסת מנהל מערכת' }).click();
+  await page.getByLabel('שם משתמש').fill('admin');
+  await page.getByLabel('סיסמה').fill('local-test-password');
+  await page.getByRole('button', { name: 'כניסה', exact: true }).click();
+  const onboarding = page.getByLabel('אני מחפש/ת עמדה');
+  if (await onboarding.isVisible()) {
+    await onboarding.check();
+    await page.getByRole('button', { name: 'המשך לסביבת העבודה' }).click();
+  }
+  let requests = 0;
+  await page.route('**/api/admin/users', async (route) => {
+    requests++;
+    if (requests === 1) {
+      await route.fulfill({ status: 503, json: { message: 'לא ניתן לטעון משתמשים' } });
+      return;
+    }
+    await route.fulfill({
+      json: Array.from({ length: 45 }, (_, index) => ({
+        id: index + 1,
+        name: 'עובד',
+        surname: String(index + 1),
+        upn: `employee${index + 1}@example.test`,
+        role: 'user',
+        site: 'MID',
+      })),
+    });
+  });
+  await page.getByRole('link', { name: 'ניהול משתמשים', exact: true }).click();
+  await expect(
+    page.getByText('לא ניתן לטעון את רשימת המשתמשים. יש לרענן את הרשימה.'),
+  ).toBeVisible();
+  await expect(page.getByText('עדיין אין עובדים רשומים.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'רענון רשימה' }).click();
+  await expect(page.getByRole('row')).toHaveCount(21);
+  await expect(page.getByText('1–20 מתוך 45')).toBeVisible();
+  await page.getByRole('button', { name: /next page|לעמוד הבא/i }).click();
+  await expect(page.getByText('21–40 מתוך 45')).toBeVisible();
+  await page.getByLabel('חיפוש לפי שם או כתובת דוא״ל').fill('employee45@');
+  await expect(page.getByRole('row')).toHaveCount(2);
+  await expect(page.getByText('employee45@example.test')).toBeVisible();
 });

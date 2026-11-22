@@ -117,6 +117,7 @@ export function DaysDialog({
   );
   const days = offer.days.filter(
     (d) =>
+      d.date >= now().toISODate()! &&
       (!from || d.date >= from) &&
       (!to || d.date <= to) &&
       (mode !== 'release' || d.status === 'mine'),
@@ -145,6 +146,7 @@ export function DaysDialog({
         )}
         <Button
           sx={buttonSx}
+          disabled={!available.length}
           onClick={() => setSelected(chosen.length === available.length ? [] : available)}
         >
           {chosen.length === available.length ? 'ניקוי הבחירה' : 'בחירת כל הימים הזמינים'}

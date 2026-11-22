@@ -10,6 +10,34 @@ import { colors } from './colors';
 import { App } from './App';
 import CssBaseline from '@mui/material/CssBaseline';
 
+// Native form validation is localized independently of the browser language.
+document.addEventListener(
+  'invalid',
+  (event) => {
+    const input = event.target;
+    if (!(
+      input instanceof HTMLInputElement ||
+      input instanceof HTMLTextAreaElement ||
+      input instanceof HTMLSelectElement
+    ))
+      return;
+    const label = input.closest('label')?.querySelector('span')?.textContent || 'השדה';
+    input.setCustomValidity(
+      input.validity.valueMissing ? `יש למלא את ${label}` : `הערך בשדה ${label} אינו תקין`,
+    );
+  },
+  true,
+);
+document.addEventListener('input', (event) => {
+  const input = event.target;
+  if (
+    input instanceof HTMLInputElement ||
+    input instanceof HTMLTextAreaElement ||
+    input instanceof HTMLSelectElement
+  )
+    input.setCustomValidity('');
+});
+
 const cache = createCache({ key: 'rtl', stylisPlugins: [prefixer, rtlPlugin] });
 const theme = createTheme(
   {

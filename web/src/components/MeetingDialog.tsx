@@ -171,35 +171,27 @@ export function MeetingDialog({
             min={now().toISODate()!}
             max={data.me.role === 'boss' ? undefined : now().plus({ months: 1 }).toISODate()!}
             workdaysOnly
-            onChange={setDate}
+            onChange={(day) => {
+              setDate(day);
+              if (day === now().toISODate() && from <= now().toFormat('HH:mm')) {
+                const next = nextMeetingSlot(day);
+                setDate(next.date);
+                setFrom(next.from);
+                setUntil(next.until);
+              }
+            }}
           />
           <Box sx={pairSx}>
-            <Field label="שעת התחלה">
-              <NativeSelect
-                disableUnderline
-                inputProps={{ dir: 'ltr' }}
-                sx={selectSx}
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              >
-                {slots.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field label="שעת סיום">
-              <NativeSelect
-                disableUnderline
-                inputProps={{ dir: 'ltr' }}
-                sx={selectSx}
-                value={until}
-                onChange={(e) => setUntil(e.target.value)}
-              >
-                {[...slots.slice(1), '24:00'].map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </NativeSelect>
-            </Field>
+            <TimeField
+              label="שעת התחלה"
+              value={from}
+              min={date === now().toISODate() ? now().toFormat('HH:mm') : undefined}
+              onChange={(value) => {
+                setFrom(value);
+                if (until <= value) setUntil(slots[slots.indexOf(value) + 1] || '24:00');
+              }}
+            />
+            <TimeField label="שעת סיום" value={until} min={from} end onChange={setUntil} />
           </Box>
           <Field label="תיאור הפגישה">
             <InputBase
@@ -275,5 +267,67 @@ export function MeetingDialog({
         )
       )}
     </Modal>
+  );
+}
+
+function TimeField({
+  label,
+  value,
+  min,
+  end,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min?: string;
+  end?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const options = end ? [...slots.slice(1), '24:00'] : slots;
+  const allowed = options.filter((time) => !min || time > min);
+  const [hour, minute] = value.split(':');
+  const hours = [...new Set(allowed.map((time) => time.slice(0, 2)))];
+  return (
+    <Box role="group" aria-label={label}>
+      <Typography sx={{ fontWeight: 600, fontSize: '.94rem', mb: '6px' }}>{label}</Typography>
+      <Box sx={{ display: 'flex', gap: 1 }} dir="ltr">
+        <NativeSelect
+          disableUnderline
+          inputProps={{ 'aria-label': label + ' שעות' }}
+          sx={selectSx}
+          value={hour}
+          onChange={(event) => {
+            const next =
+              allowed.find((time) => time === event.target.value + ':' + minute) ||
+              allowed.find((time) => time.startsWith(event.target.value + ':'));
+            if (next) onChange(next);
+          }}
+        >
+          {!hours.includes(hour) && (
+            <option value={hour} disabled>
+              {hour}
+            </option>
+          )}
+          {hours.map((h) => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect
+          disableUnderline
+          inputProps={{ 'aria-label': label + ' דקות' }}
+          sx={selectSx}
+          value={minute}
+          onChange={(event) => onChange(hour + ':' + event.target.value)}
+        >
+          {['00', '15', '30', '45'].map((m) => (
+            <option key={m} value={m} disabled={!allowed.includes(hour + ':' + m)}>
+              {m}
+            </option>
+          ))}
+        </NativeSelect>
+      </Box>
+    </Box>
   );
 }

@@ -122,6 +122,14 @@ export class StationsController {
           'UPDATE offer_days SET borrower_id=$3 WHERE offer_id=$1 AND day=ANY($2::date[])',
           [offerId, days, action === 'book' ? me.id : null],
         );
+        if (action === 'book') {
+          const dates = [...days].sort().map((day) => DateTime.fromISO(day).toFormat('dd/MM/yy'));
+          await notify(
+            db,
+            offer.owner_id,
+            `${me.name} ${me.surname} הזמין/ה את העמדה בחדר ${offer.room} באתר ${offer.site} לתאריכים ${dates.join(', ')}.`,
+          );
+        }
       }
       return { ok: true };
     });

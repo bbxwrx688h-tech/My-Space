@@ -1,13 +1,5 @@
 import { Box, Button, ButtonBase, NativeSelect, Typography } from '@mui/material';
-import {
-  rowSx,
-  panelSx,
-  filterBarSx,
-  pageHeadingSx,
-  subtitleSx,
-  buttonSx,
-  selectSx,
-} from '../layout';
+import { rowSx, panelSx, filterBarSx, pageHeadingSx, buttonSx, selectSx } from '../layout';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
@@ -51,9 +43,6 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
       <Box component="header" sx={pageHeadingSx}>
         <Box>
           <Typography variant="h1">חדר ישיבות</Typography>
-          <Typography variant="body1" sx={subtitleSx}>
-            יומן ההזמנות · שעון ירושלים
-          </Typography>
         </Box>
         <Button
           sx={buttonSx}
@@ -86,105 +75,153 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
           </NativeSelect>
         </Field>
         <Box sx={{ ...rowSx, alignSelf: 'center' }}>
-          <Button sx={buttonSx} onClick={() => navigate(-14)}>
+          <Button
+            sx={buttonSx}
+            disabled={start <= sunday().toISODate()!}
+            onClick={() => navigate(-7)}
+          >
             הקודם
           </Button>
-          <Button sx={buttonSx} variant="outlined" onClick={() => setStart(sunday().toISODate()!)}>
-            היום
-          </Button>
-          <Button sx={buttonSx} onClick={() => navigate(14)}>
+          <Button sx={buttonSx} onClick={() => navigate(7)}>
             הבא
           </Button>
         </Box>
         <Box component="bdi" sx={{ marginInlineStart: 'auto', alignSelf: 'center' }}>
-          {shortDate(start)} – {shortDate(first.plus({ days: 13 }).toISODate()!)}
+          {shortDate(start)} – {shortDate(first.plus({ days: 6 }).toISODate()!)}
         </Box>
       </Box>
       <ErrorLine error={error} />
-      {[0, 7].map((offset) => (
+      {[0].map((offset) => (
         <Box
           component="section"
-          sx={{
-            ...panelSx,
-            mt: '14px',
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(5,minmax(0,1fr))' },
-            p: 0,
-            overflow: 'hidden',
-          }}
           key={offset}
           aria-label={'שבוע ' + (offset ? 2 : 1)}
+          sx={{ ...panelSx, mt: 2, p: 0, overflow: 'auto', maxHeight: '60vh' }}
         >
-          {Array.from({ length: 5 }, (_, i) => {
-            const day = first.plus({ days: offset + i }).toISODate()!;
-            const list = meetings.filter((m) => local(m.start).toISODate() === day);
-            return (
-              <Box
-                sx={{
-                  p: { xs: '8px 8px 36px', md: '16px 16px 42px' },
-                  minHeight: { xs: 78, sm: 152 },
-                  position: 'relative',
-                  bgcolor: day === now().toISODate() ? 'action.hover' : undefined,
-                  borderInlineEnd: { xs: 0, sm: '1px solid' },
-                  borderBottom: { xs: '1px solid', sm: 0 },
-                  borderColor: 'divider',
-                  '&:last-child': { border: 0 },
-                }}
-                key={day}
-              >
-                <Typography variant="h3" sx={{ fontSize: '.98rem', mb: 1.5 }}>
-                  {fullDate(day)}
-                </Typography>
-                {list.map((m) => (
-                  <ButtonBase
-                    sx={{
-                      ...buttonSx,
-                      bgcolor: 'primary.main',
-                      color: 'primary.contrastText',
-                      borderRadius: '8px',
-                      width: '100%',
-                      textAlign: 'start',
-                      justifyContent: 'stretch',
-                      p: '9px',
-                      mb: '6px',
-                      display: 'grid',
-                      gap: 0.5,
-                      overflowWrap: 'anywhere',
-                    }}
-                    key={m.id}
-                    onClick={() => setDialog({ meeting: m })}
-                  >
-                    <Box component="bdi" sx={{ fontSize: '.86rem' }}>
-                      {clock(m.start)}–{clock(m.end)}
-                    </Box>
-                    <strong>{m.title}</strong>
-                  </ButtonBase>
-                ))}
-                {!list.length && (
-                  <Box component="span" sx={{ color: 'text.secondary' }}>
-                    אין פגישות
-                  </Box>
-                )}
-                {day >= now().toISODate()! && (!lastAllowed || day <= lastAllowed) && (
-                  <ButtonBase
-                    sx={{
-                      position: 'absolute',
-                      bottom: 8,
-                      insetInlineStart: 12,
-                      bgcolor: 'secondary.main',
-                      color: 'primary.contrastText',
-                      borderRadius: '8px',
-                      p: 0.5,
-                    }}
-                    aria-label={'הוספת פגישה ' + shortDate(day)}
-                    onClick={() => setDialog({ date: day })}
-                  >
-                    <Plus size={16} />
-                  </ButtonBase>
-                )}
-              </Box>
-            );
-          })}
+          <Box
+            sx={{
+              minWidth: 680,
+              display: 'grid',
+              gridTemplateColumns: '60px repeat(5,minmax(120px,1fr))',
+            }}
+          >
+            <Box />
+            {Array.from({ length: 5 }, (_, i) => {
+              const day = first.plus({ days: offset + i }).toISODate()!;
+              const canBook = day >= now().toISODate()! && (!lastAllowed || day <= lastAllowed);
+              return (
+                <Box
+                  key={day}
+                  sx={{
+                    p: 1,
+                    textAlign: 'center',
+                    borderInlineStart: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: day === now().toISODate() ? 'action.selected' : undefined,
+                  }}
+                >
+                  <Typography variant="h3" sx={{ fontSize: '.95rem' }}>
+                    {fullDate(day)}
+                  </Typography>
+                  {canBook && (
+                    <ButtonBase
+                      aria-label={'הוספת פגישה ' + shortDate(day)}
+                      onClick={() => setDialog({ date: day })}
+                      sx={{ mt: 0.5, color: 'primary.main' }}
+                    >
+                      <Plus size={18} />
+                    </ButtonBase>
+                  )}
+                </Box>
+              );
+            })}
+            <Box
+              sx={{
+                position: 'relative',
+                height: 24 * 48,
+                borderTop: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <Box
+                  key={h}
+                  sx={{
+                    height: 48,
+                    textAlign: 'center',
+                    fontSize: '.8rem',
+                    color: 'text.secondary',
+                  }}
+                >
+                  {String(h).padStart(2, '0')}:00
+                </Box>
+              ))}
+            </Box>
+            {Array.from({ length: 5 }, (_, i) => {
+              const day = first.plus({ days: offset + i }).toISODate()!;
+              return (
+                <Box
+                  key={day}
+                  sx={{
+                    position: 'relative',
+                    height: 24 * 48,
+                    borderInlineStart: '1px solid',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                    backgroundImage:
+                      'repeating-linear-gradient(to bottom, transparent 0, transparent 47px, rgba(65,90,119,.23) 47px, rgba(65,90,119,.23) 48px)',
+                  }}
+                >
+                  {day === now().toISODate() && (
+                    <Box
+                      aria-label="השעה הנוכחית"
+                      sx={{
+                        position: 'absolute',
+                        top: (now().hour * 60 + now().minute) * 0.8,
+                        insetInline: 0,
+                        borderTop: '2px solid',
+                        borderColor: 'error.main',
+                        zIndex: 1,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+                  {meetings
+                    .filter((m) => local(m.start).toISODate() === day)
+                    .map((m) => {
+                      const begin = local(m.start);
+                      const duration = local(m.end).diff(begin, 'minutes').minutes;
+                      return (
+                        <ButtonBase
+                          key={m.id}
+                          onClick={() => setDialog({ meeting: m })}
+                          sx={{
+                            position: 'absolute',
+                            top: (begin.hour * 60 + begin.minute) * 0.8,
+                            height: Math.max(24, duration * 0.8),
+                            insetInline: 3,
+                            display: 'block',
+                            textAlign: 'start',
+                            overflow: 'hidden',
+                            p: 0.5,
+                            borderRadius: 1,
+                            bgcolor: 'primary.main',
+                            color: 'primary.contrastText',
+                            fontSize: '.8rem',
+                          }}
+                        >
+                          <strong>{m.title}</strong>
+                          <br />
+                          <bdi>
+                            {clock(m.start)}–{clock(m.end)}
+                          </bdi>
+                        </ButtonBase>
+                      );
+                    })}
+                </Box>
+              );
+            })}
+          </Box>
         </Box>
       ))}
       {dialog && (
@@ -196,8 +233,8 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
           close={() => setDialog(null)}
           saved={async (date) => {
             // Bring a newly booked date into view even if the form was opened
-            // from a different fortnight.
-            if (date && (date < start || date >= first.plus({ days: 14 }).toISODate()!)) {
+            // from a different week.
+            if (date && (date < start || date >= first.plus({ days: 7 }).toISODate()!)) {
               const selected = local(date);
               setStart(selected.minus({ days: selected.weekday % 7 }).toISODate()!);
             }

@@ -8,6 +8,8 @@ import {
   TableHead,
   TableRow,
   Typography,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { rowSx, pairSx, panelSx, subtitleSx, buttonSx } from '../layout';
 import { ReactNode, useState } from 'react';
@@ -23,8 +25,8 @@ const featureSx = {
   gap: '17px 23px',
   alignItems: 'start',
   borderRadius: '16px',
-  p: '26px 30px',
-  minHeight: { xs: 0, sm: 190 },
+  p: '16px 20px',
+  minHeight: 0,
   '& > svg': { width: 58, height: 58, color: 'inherit', strokeWidth: 1.65 },
   '@media (max-width:800px)': { p: '18px', gap: 1.5, '& > svg': { width: 32, height: 32 } },
 } as const;
@@ -67,7 +69,7 @@ function Activity({
         {title}
       </Typography>
       {rows.length ? (
-        <TableContainer sx={{ overflow: 'auto' }}>
+        <TableContainer sx={{ overflow: 'auto', maxHeight: '35vh' }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -101,6 +103,7 @@ function Activity({
 }
 export function Home({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [activity, setActivity] = useState(0);
   const [days, setDays] = useState<{ id: number; mode: 'release' | 'withdraw' } | null>(null);
   const offer = data.offers.find((o) => o.id === days?.id);
   return (
@@ -181,64 +184,79 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
           </Button>
         </Box>
       </Box>
-      <Activity
-        title="הפגישות שלי"
-        icon={<CalendarDays />}
-        headers={['תאריך', 'שעה', 'פגישה', 'חדר', 'פעולה']}
-        empty="אין לך פגישות קרובות."
-        rows={data.meetings.map((m) => [
-          fullDate(m.start),
-          <bdi>
-            {clock(m.start)}–{clock(m.end)}
-          </bdi>,
-          m.title,
-          data.rooms.find((r) => r.id === m.roomId)?.site,
-          <Button sx={{ ...buttonSx, p: '2px 8px' }} onClick={() => setMeeting(m)}>
-            פרטים
-          </Button>,
-        ])}
-      />
-      <Activity
-        title="ההזמנות שלי"
-        icon={<Monitor />}
-        headers={['תאריך', 'אתר וחדר', 'בעל/ת העמדה', 'פעולה']}
-        empty="אין לך הזמנות לעמדת עבודה."
-        rows={data.offers
-          .flatMap((o) =>
-            o.days.filter((d) => d.status === 'mine').map((d) => ({ date: d.date, o })),
-          )
-          .sort((a, b) => a.date.localeCompare(b.date))
-          .map(({ date, o }) => [
-            fullDate(date),
-            o.station.site + ' · ' + o.station.room,
-            o.station.owner,
-            <Button
-              sx={{ ...buttonSx, p: '2px 8px' }}
-              onClick={() => setDays({ id: o.id, mode: 'release' })}
-            >
-              ניהול הזמנה
+      <Tabs
+        value={activity}
+        onChange={(_, value: number) => setActivity(value)}
+        aria-label="הפעילות שלי"
+      >
+        <Tab label="הפגישות שלי" />
+        <Tab label="ההזמנות שלי" />
+        <Tab label="ההצעות שלי" />
+      </Tabs>
+      {activity === 0 && (
+        <Activity
+          title="הפגישות שלי"
+          icon={<CalendarDays />}
+          headers={['תאריך', 'שעה', 'פגישה', 'חדר', 'פעולה']}
+          empty="אין לך פגישות קרובות."
+          rows={data.meetings.map((m) => [
+            fullDate(m.start),
+            <bdi>
+              {clock(m.start)}–{clock(m.end)}
+            </bdi>,
+            m.title,
+            data.rooms.find((r) => r.id === m.roomId)?.site,
+            <Button sx={{ ...buttonSx, p: '2px 8px' }} onClick={() => setMeeting(m)}>
+              פרטים
             </Button>,
           ])}
-      />
-      <Activity
-        title="ההצעות שלי"
-        icon={<FileText />}
-        headers={['תאריכים', 'אתר וחדר', 'תיאור', 'פעולה']}
-        empty="עדיין לא פרסמת הצעות לעמדה."
-        rows={data.offers
-          .filter((o) => o.station.ownerId === data.me.id)
-          .map((o) => [
-            <bdi>{offerRange(o)}</bdi>,
-            o.station.site + ' · ' + o.station.room,
-            o.station.description,
-            <Button
-              sx={{ ...buttonSx, p: '2px 8px' }}
-              onClick={() => setDays({ id: o.id, mode: 'withdraw' })}
-            >
-              ניהול ההצעה
-            </Button>,
-          ])}
-      />
+        />
+      )}
+      {activity === 1 && (
+        <Activity
+          title="ההזמנות שלי"
+          icon={<Monitor />}
+          headers={['תאריך', 'אתר וחדר', 'בעל/ת העמדה', 'פעולה']}
+          empty="אין לך הזמנות לעמדת עבודה."
+          rows={data.offers
+            .flatMap((o) =>
+              o.days.filter((d) => d.status === 'mine').map((d) => ({ date: d.date, o })),
+            )
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map(({ date, o }) => [
+              fullDate(date),
+              o.station.site + ' · ' + o.station.room,
+              o.station.owner,
+              <Button
+                sx={{ ...buttonSx, p: '2px 8px' }}
+                onClick={() => setDays({ id: o.id, mode: 'release' })}
+              >
+                ניהול הזמנה
+              </Button>,
+            ])}
+        />
+      )}
+      {activity === 2 && (
+        <Activity
+          title="ההצעות שלי"
+          icon={<FileText />}
+          headers={['תאריכים', 'אתר וחדר', 'תיאור', 'פעולה']}
+          empty="עדיין לא פרסמת הצעות לעמדה."
+          rows={data.offers
+            .filter((o) => o.station.ownerId === data.me.id)
+            .map((o) => [
+              <bdi>{offerRange(o)}</bdi>,
+              o.station.site + ' · ' + o.station.room,
+              o.station.description,
+              <Button
+                sx={{ ...buttonSx, p: '2px 8px' }}
+                onClick={() => setDays({ id: o.id, mode: 'withdraw' })}
+              >
+                ניהול ההצעה
+              </Button>,
+            ])}
+        />
+      )}
       {meeting && (
         <MeetingDialog
           data={data}

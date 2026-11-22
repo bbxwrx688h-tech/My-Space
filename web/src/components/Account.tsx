@@ -1,16 +1,18 @@
-import { Box, Button, NativeSelect, Typography } from '@mui/material';
+import { Box, Button, NativeSelect, Popover, Typography } from '@mui/material';
 import { stackSx, rowSx, buttonSx, selectSx } from '../layout';
 import { useEffect, useState } from 'react';
 import { Person } from '../../../shared/model';
 import { api } from '../api';
-import { ErrorLine, Modal, useAction } from './Fields';
+import { ErrorLine, useAction } from './Fields';
 
 export function Account({
   me,
+  anchor,
   close,
   logout,
 }: {
   me: Person;
+  anchor: HTMLElement | null;
   close: () => void;
   logout: () => Promise<void>;
 }) {
@@ -24,8 +26,16 @@ export function Account({
         .catch((e) => setError(e.message));
   }, [me.role]);
   return (
-    <Modal title="החשבון שלי" close={close}>
-      <Box sx={stackSx}>
+    <Popover
+      open
+      anchorEl={anchor}
+      onClose={close}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+    >
+      <Box
+        sx={{ ...stackSx, p: 2, width: 340, maxWidth: '90vw', maxHeight: '70vh', overflow: 'auto' }}
+      >
         <strong>
           {me.name} {me.surname}
         </strong>
@@ -76,6 +86,6 @@ export function Account({
           יציאה מהמערכת
         </Button>
       </Box>
-    </Modal>
+    </Popover>
   );
 }

@@ -34,6 +34,7 @@ export function App() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(currentPage);
   const [panel, setPanel] = useState<'account' | 'notices' | null>(null);
+  const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
   const [message, setMessage] = useState('');
   const action = useAction(),
     sequence = useRef(0);
@@ -194,7 +195,10 @@ export function App() {
                 '&:hover': { bgcolor: 'primary.main', color: 'primary.contrastText' },
               }}
               aria-label="החשבון שלי"
-              onClick={() => setPanel('account')}
+              onClick={(event) => {
+                setAccountAnchor(event.currentTarget);
+                setPanel('account');
+              }}
             >
               {data.me.name[0]}
               {data.me.surname[0]}
@@ -215,6 +219,7 @@ export function App() {
       {panel === 'account' && (
         <Account
           me={data.me}
+          anchor={accountAnchor}
           close={() => setPanel(null)}
           logout={async () => {
             await api('auth/logout', {});

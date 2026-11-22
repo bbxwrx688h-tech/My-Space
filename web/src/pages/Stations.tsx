@@ -14,6 +14,7 @@ import { Workspace } from '../../../shared/model';
 import { DateField, ErrorLine } from '../components/Fields';
 import { SiteSelect } from '../components/StationFields';
 import { DaysDialog, offerRange, PublishDialog } from '../components/StationDialogs';
+import { now } from '../dates';
 
 export function Stations({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [site, setSite] = useState('');
@@ -60,8 +61,20 @@ export function Stations({ data, saved }: { data: Workspace; saved: () => Promis
       </Box>
       <Box sx={filterBarSx}>
         <SiteSelect value={site} onChange={setSite} all />
-        <DateField label="מתאריך" value={from} onChange={setFrom} clearable />
-        <DateField label="עד תאריך" value={to} onChange={setTo} clearable />
+        <DateField
+          label="מתאריך"
+          value={from}
+          min={now().toISODate()!}
+          onChange={setFrom}
+          clearable
+        />
+        <DateField
+          label="עד תאריך"
+          value={to}
+          min={from || now().toISODate()!}
+          onChange={setTo}
+          clearable
+        />
         {(site || from || to) && (
           <Button
             sx={buttonSx}
@@ -149,8 +162,8 @@ export function Stations({ data, saved }: { data: Workspace; saved: () => Promis
           close={close}
           saved={saved}
           offer={offer}
-          from={from}
-          to={to}
+          from={offer.station.ownerId === data.me.id ? undefined : from}
+          to={offer.station.ownerId === data.me.id ? undefined : to}
           mode={offer.station.ownerId === data.me.id ? 'withdraw' : 'book'}
         />
       )}

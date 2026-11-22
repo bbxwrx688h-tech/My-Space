@@ -26,7 +26,31 @@ export const selectedDays = z
 
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
-  if (!result.success)
-    throw new BadRequestException('הנתונים שהוזנו אינם תקינים. יש לבדוק את השדות.');
+  if (!result.success) {
+    const labels: Record<string, string> = {
+      title: 'כותרת הפגישה',
+      description: 'תיאור',
+      room: 'מספר חדר',
+      date: 'תאריך',
+      from: 'שעת התחלה',
+      until: 'שעת סיום',
+      start: 'תאריך התחלה',
+      end: 'תאריך סיום',
+      site: 'אתר',
+      os: 'מערכת הפעלה',
+      days: 'ימים',
+      upn: 'כתובת דוא״ל',
+      name: 'שם פרטי',
+      surname: 'שם משפחה',
+      username: 'שם משתמש',
+      password: 'סיסמה',
+    };
+    const field = String(result.error.issues[0]?.path[0] ?? '');
+    throw new BadRequestException(
+      labels[field]
+        ? `יש לבדוק את השדה ${labels[field]}`
+        : 'הנתונים שהוזנו אינם תקינים. יש לבדוק את השדות.',
+    );
+  }
   return result.data;
 }

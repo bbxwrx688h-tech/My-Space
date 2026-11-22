@@ -56,6 +56,7 @@ test('employee publishes a station, books a meeting, borrows selected days and r
     page.getByRole('article').getByText('עמדה ליד החלון', { exact: true }),
   ).toBeVisible();
   await page.getByRole('link', { name: 'חדר ישיבות', exact: true }).click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
   await page.getByRole('button', { name: 'הוספת פגישה ' + future, exact: true }).click();
   await page.getByLabel('כותרת הפגישה').fill('תכנון שבועי');
   await page.getByLabel('תיאור הפגישה').fill('חלוקת משימות לצוות');
@@ -63,13 +64,16 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   await page.getByRole('button', { name: /תכנון שבועי/ }).click();
   await expect(page.getByText('חלוקת משימות לצוות')).toBeVisible();
   await page.getByRole('button', { name: 'עריכת פגישה' }).click();
-  await page.getByLabel('שעת סיום').selectOption('10:30');
+  await page.getByLabel('שעת סיום שעות').selectOption('10');
+  await page.getByLabel('שעת סיום דקות').selectOption('30');
   await page.getByRole('button', { name: 'שמירת שינויים' }).click();
   await expect(page.getByRole('button', { name: /09:00–10:30/ })).toBeVisible();
   await page.getByRole('button', { name: 'הבא', exact: true }).click();
   await expect(page.getByRole('button', { name: /תכנון שבועי/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'היום', exact: true }).click();
+  await page.getByRole('button', { name: 'הקודם', exact: true }).click();
   await expect(page.getByRole('button', { name: /תכנון שבועי/ })).toBeVisible();
+  await page.getByRole('button', { name: 'הקודם', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'הקודם', exact: true })).toBeDisabled();
   await capture(page, 'calendar.png');
 
   // A second employee offers a different computer in the same physical room.
@@ -99,8 +103,10 @@ test('employee publishes a station, books a meeting, borrows selected days and r
   await page.getByRole('button', { name: 'אישור הזמנה (2)' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('link', { name: 'בית', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'ניהול הזמנה' })).toHaveCount(2);
+  await page.getByRole('tab', { name: 'ההצעות שלי' }).click();
   await expect(page.getByRole('heading', { name: 'ההצעות שלי' })).toBeVisible();
+  await page.getByRole('tab', { name: 'ההזמנות שלי' }).click();
+  await expect(page.getByRole('button', { name: 'ניהול הזמנה' })).toHaveCount(2);
   await capture(page, 'home.png');
   const viewport = page.viewportSize()!;
   await page.setViewportSize({ width: 390, height: 844 });
@@ -170,11 +176,14 @@ test('admin manages roles and a boss explicitly confirms a protected override af
   });
   await dev(page, 'tamar');
   await page.getByRole('link', { name: 'לפתיחת היומן' }).click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
   await page.getByRole('button', { name: 'הוספת פגישה ' + future, exact: true }).click();
   await page.getByLabel('כותרת הפגישה').fill('דיון חלופי');
   await page.getByLabel('תיאור הפגישה').fill('דיון המשך');
-  await page.getByLabel('שעת התחלה').selectOption('15:15');
-  await page.getByLabel('שעת סיום').selectOption('15:45');
+  await page.getByLabel('שעת התחלה שעות').selectOption('15');
+  await page.getByLabel('שעת התחלה דקות').selectOption('15');
+  await page.getByLabel('שעת סיום שעות').selectOption('15');
+  await page.getByLabel('שעת סיום דקות').selectOption('45');
   await page.getByRole('button', { name: 'הוספת פגישה', exact: true }).click();
   await expect(page.getByText(/יש ליצור קשר עם אורי כהן/)).toBeVisible();
   await expect(page.getByRole('button', { name: /אישור בעוד/ })).toBeDisabled();

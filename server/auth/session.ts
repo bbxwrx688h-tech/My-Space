@@ -10,7 +10,8 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { pool } from '../db/connection';
 import { Person } from '../../shared/model';
 
-export const personColumns = 'p.id,p.upn,p.name,p.surname,p.role,p.site';
+export const personColumns =
+  'p.id,p.upn,p.name,p.surname,p.role,p.site,p.supervisor_id AS "supervisorId"';
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
 export const devEnabled = () =>
   process.env.NODE_ENV !== 'production' && process.env.DEV_LOGIN === 'true';

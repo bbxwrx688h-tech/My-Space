@@ -31,12 +31,13 @@ export function interval(
   ) {
     throw new BadRequestException('יש לבחור מועד עתידי בימים ראשון עד חמישי ושעת סיום אחרי ההתחלה');
   }
-  if (role !== 'boss' && day.startOf('day') > now.plus({ months: 1 }).endOf('day')) {
-    throw new BadRequestException('ניתן להזמין עד חודש מראש');
+  if (role === 'manager' && day.startOf('day') > now.plus({ weeks: 2 }).endOf('day')) {
+    throw new BadRequestException('ניתן לבקש הזמנה עד שבועיים מראש');
   }
   return [start.toUTC().toISO()!, end.toUTC().toISO()!] as const;
 }
 
 export const meetingSelect = `SELECT m.id, m.room_id AS "roomId", m.organizer_id AS "organizerId",
-  p.name || ' ' || p.surname AS organizer, p.role, m.title, m.description,
-  m.starts AS start, m.ends AS "end", m.version FROM meetings m JOIN people p ON p.id=m.organizer_id`;
+  p.name || ' ' || p.surname AS organizer, p.role, p.supervisor_id AS "ownerSupervisorId", m.title, m.description,
+  m.starts AS start, m.ends AS "end", m.version, m.private, m.visit, m.series_id AS "seriesId"
+  FROM meetings m JOIN people p ON p.id=m.organizer_id`;

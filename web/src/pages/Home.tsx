@@ -15,7 +15,7 @@ import { rowSx, pairSx, panelSx, subtitleSx, buttonSx } from '../layout';
 import { ReactNode, useState } from 'react';
 import { CalendarDays, ChevronLeft, FileText, Monitor } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
-import { clock, fullDate, now } from '../dates';
+import { clock, endClock, fullDate, now } from '../dates';
 import { DaysDialog, offerRange, PublishDialog } from '../components/StationDialogs';
 import { MeetingDialog } from '../components/MeetingDialog';
 
@@ -212,7 +212,7 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
           rows={data.meetings.map((m) => [
             fullDate(m.start),
             <bdi>
-              {clock(m.start)}–{clock(m.end)}
+              {clock(m.start)}–{endClock(m.start, m.end)}
             </bdi>,
             m.title,
             data.rooms.find((r) => r.id === m.roomId)?.site,

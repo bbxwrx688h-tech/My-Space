@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
 import { api } from '../api';
-import { clock, fullDate, local, now, shortDate, sunday } from '../dates';
+import { clock, endClock, fullDate, local, now, shortDate, sunday } from '../dates';
 import { ErrorLine, Field } from '../components/Fields';
 import { MeetingDialog } from '../components/MeetingDialog';
 
@@ -33,9 +33,10 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
     };
   }, [start, roomId, data]);
   const first = local(start);
-  // Regular employees can book through the same date in the following month.
-  // Bosses retain access to later weeks.
-  const lastAllowed = data.me.role === 'boss' ? undefined : now().plus({ months: 1 }).toISODate()!;
+  // Managers can request dates within two weeks; bosses and admins have no limit.
+  const lastAllowed =
+    data.me.role === 'manager' ? now().plus({ weeks: 2 }).toISODate()! : undefined;
+  const canRequest = data.me.role !== 'user';
   function navigate(days: number) {
     setMeetings([]);
     setStart(first.plus({ days }).toISODate()!);
@@ -46,17 +47,19 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
         <Box>
           <Typography variant="h1">חדר ישיבות</Typography>
         </Box>
-        <Button
-          sx={buttonSx}
-          variant="contained"
-          disabled={!!lastAllowed && start > lastAllowed}
-          startIcon={<Plus />}
-          onClick={() =>
-            setDialog({ date: start > now().toISODate()! ? start : now().toISODate()! })
-          }
-        >
-          פגישה חדשה
-        </Button>
+        {canRequest && (
+          <Button
+            sx={buttonSx}
+            variant="contained"
+            disabled={!!lastAllowed && start > lastAllowed}
+            startIcon={<Plus />}
+            onClick={() =>
+              setDialog({ date: start > now().toISODate()! ? start : now().toISODate()! })
+            }
+          >
+            {data.me.role === 'manager' ? 'בקשת פגישה' : 'פגישה חדשה'}
+          </Button>
+        )}
       </Box>
       <Box sx={filterBarSx}>
         <Field label="חדר ישיבות">
@@ -114,7 +117,8 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
             <Box />
             {Array.from({ length: 5 }, (_, i) => {
               const day = first.plus({ days: offset + i }).toISODate()!;
-              const canBook = day >= now().toISODate()! && (!lastAllowed || day <= lastAllowed);
+              const canBook =
+                canRequest && day >= now().toISODate()! && (!lastAllowed || day <= lastAllowed);
               return (
                 <Box
                   key={day}
@@ -196,7 +200,14 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
                     .filter((m) => local(m.start).toISODate() === day)
                     .map((m) => {
                       const begin = local(m.start);
-                      const duration = local(m.end).diff(begin, 'minutes').minutes;
+                      const end = local(m.end);
+                      // The grid is wall-clock time, including on daylight-saving transitions.
+                      const duration =
+                        end.hour * 60 +
+                        end.minute +
+                        (end.toISODate() !== begin.toISODate() ? 1440 : 0) -
+                        begin.hour * 60 -
+                        begin.minute;
                       return (
                         <ButtonBase
                           key={m.id}
@@ -211,15 +222,18 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
                             overflow: 'hidden',
                             p: 0.5,
                             borderRadius: 1,
-                            bgcolor: 'primary.main',
+                            bgcolor: m.pending ? 'secondary.main' : 'primary.main',
                             color: 'primary.contrastText',
                             fontSize: '.8rem',
                           }}
                         >
-                          <strong>{m.title}</strong>
+                          <strong>
+                            {m.title}
+                            {m.pending ? ' · ממתינה לאישור' : ''}
+                          </strong>
                           <br />
                           <bdi>
-                            {clock(m.start)}–{clock(m.end)}
+                            {clock(m.start)}–{endClock(m.start, m.end)}
                           </bdi>
                         </ButtonBase>
                       );
@@ -237,7 +251,8 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
           meeting={dialog.meeting}
           initialDate={dialog.date}
           close={() => setDialog(null)}
-          saved={async (date) => {
+          saved={async (date, selectedRoomId) => {
+            if (selectedRoomId && selectedRoomId !== roomId) setRoom(selectedRoomId);
             // Bring a newly booked date into view even if the form was opened
             // from a different week.
             if (date && (date < start || date >= first.plus({ days: 7 }).toISODate()!)) {

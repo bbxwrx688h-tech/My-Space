@@ -17,14 +17,18 @@ import { Person } from '../../../shared/model';
 import { api } from '../api';
 import { buttonSx, panelSx, selectSx, textInputSx } from '../layout';
 import { ErrorLine, Field, useAction } from '../components/Fields';
+import { SiteSelect } from '../components/StationFields';
 
-export function Users() {
+export function Users({ saved }: { saved: () => Promise<void> }) {
   const [users, setUsers] = useState<Person[]>([]);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [roomName, setRoomName] = useState('');
+  const [roomSite, setRoomSite] = useState('MID');
+  const roomAction = useAction();
   const action = useAction();
 
   useEffect(() => {
@@ -92,6 +96,33 @@ export function Users() {
           />
         </Field>
       </Box>
+      <Box
+        component="form"
+        sx={{ ...panelSx, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'end', gap: 2 }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void roomAction.run(async () => {
+            await api('admin/rooms', { name: roomName, site: roomSite });
+            setRoomName('');
+            await saved();
+          });
+        }}
+      >
+        <Field label="שם חדר הישיבות">
+          <InputBase
+            sx={textInputSx}
+            required
+            inputProps={{ maxLength: 150 }}
+            value={roomName}
+            onChange={(event) => setRoomName(event.target.value)}
+          />
+        </Field>
+        <SiteSelect value={roomSite} onChange={setRoomSite} />
+        <Button sx={buttonSx} variant="contained" type="submit" disabled={roomAction.busy}>
+          הוספת חדר ישיבות
+        </Button>
+        <ErrorLine error={roomAction.error} />
+      </Box>
       <ErrorLine error={error || action.error} />
       <Box sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
         {loading ? (
@@ -114,6 +145,7 @@ export function Users() {
                     <TableCell>דוא״ל</TableCell>
                     <TableCell>אתר</TableCell>
                     <TableCell>תפקיד</TableCell>
+                    <TableCell>ממונה</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -136,20 +168,64 @@ export function Users() {
                           value={person.role}
                           disabled={action.busy}
                           onChange={(event) => {
-                            const role = event.target.value as 'user' | 'boss';
+                            const role = event.target.value as 'user' | 'manager' | 'boss';
                             void action.run(async () => {
                               await api('admin/role', { personId: person.id, role });
                               setUsers((previous) =>
                                 previous.map((user) =>
-                                  user.id === person.id ? { ...user, role } : user,
+                                  user.id === person.id
+                                    ? { ...user, role, supervisorId: null }
+                                    : user,
                                 ),
                               );
                             });
                           }}
                         >
                           <option value="user">עובד/ת</option>
-                          <option value="boss">מנהל/ת</option>
+                          <option value="manager">מנהל/ת</option>
+                          <option value="boss">מנהל/ת בכיר/ה</option>
                         </NativeSelect>
+                      </TableCell>
+                      <TableCell>
+                        {person.role !== 'boss' && (
+                          <NativeSelect
+                            disableUnderline
+                            sx={{ ...selectSx, width: 'auto', minWidth: 150 }}
+                            inputProps={{
+                              'aria-label': `ממונה ${person.name} ${person.surname} ${person.upn}`,
+                            }}
+                            value={person.supervisorId ?? ''}
+                            disabled={action.busy}
+                            onChange={(event) => {
+                              const supervisorId = event.target.value
+                                ? Number(event.target.value)
+                                : null;
+                              void action.run(async () => {
+                                await api('admin/supervisor', {
+                                  personId: person.id,
+                                  supervisorId,
+                                });
+                                setUsers((previous) =>
+                                  previous.map((user) =>
+                                    user.id === person.id ? { ...user, supervisorId } : user,
+                                  ),
+                                );
+                              });
+                            }}
+                          >
+                            <option value="">ללא ממונה</option>
+                            {users
+                              .filter(
+                                (user) =>
+                                  user.role === (person.role === 'user' ? 'manager' : 'boss'),
+                              )
+                              .map((user) => (
+                                <option key={user.id} value={user.id}>
+                                  {user.name} {user.surname} · {user.upn}
+                                </option>
+                              ))}
+                          </NativeSelect>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -11,7 +11,10 @@ export function requireReview(
   token?: string,
 ) {
   if (!affected.length) return;
-  const delay = affected.some((m) => m.role === 'boss' && m.organizerId !== actor.id) ? 5 : 0;
+  const delay =
+    actor.role === 'boss' && affected.some((m) => m.role === 'boss' && m.organizerId !== actor.id)
+      ? 5
+      : 0;
   const context = JSON.stringify([
     actor.id,
     command,

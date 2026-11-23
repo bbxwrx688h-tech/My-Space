@@ -29,7 +29,11 @@ export function Account({
         </strong>
         <Typography>
           <bdi>{me.upn}</bdi> · {me.site} ·{' '}
-          {{ user: 'עובד/ת', boss: 'מנהל/ת', admin: 'מנהל מערכת' }[me.role]}
+          {
+            { user: 'עובד/ת', manager: 'מנהל/ת', boss: 'מנהל/ת בכיר/ה', admin: 'מנהל מערכת' }[
+              me.role
+            ]
+          }
         </Typography>
         {me.role === 'admin' && (
           <Button sx={buttonSx} href="#users" onClick={close}>

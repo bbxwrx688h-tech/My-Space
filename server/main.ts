@@ -8,12 +8,21 @@ import rateLimit from '@fastify/rate-limit';
 import { AuthController } from './controllers/auth.controller';
 import { SessionGuard } from './auth/session';
 import { MeetingsController } from './controllers/meetings.controller';
+import { MeetingActionsController } from './controllers/meeting-actions.controller';
 import { StationsController } from './controllers/stations.controller';
 import { WorkspaceController } from './controllers/workspace.controller';
 import { migrate } from './db/migrate';
+import { transaction } from './db/connection';
+import { expireRequests, lockSchedule } from './meetings/requests';
 
 @Module({
-  controllers: [AuthController, WorkspaceController, MeetingsController, StationsController],
+  controllers: [
+    AuthController,
+    WorkspaceController,
+    MeetingsController,
+    MeetingActionsController,
+    StationsController,
+  ],
   providers: [SessionGuard],
 })
 class AppModule {}
@@ -28,6 +37,16 @@ export async function buildApp(quiet = false) {
   await migrate();
   const adapter = new FastifyAdapter();
   const fastify = adapter.getInstance();
+  // Expired holds stop blocking immediately in queries. This timer also delivers
+  // expiry notifications when nobody has opened the calendar recently.
+  const expiryTimer = setInterval(() => {
+    void transaction(async (db) => {
+      await lockSchedule(db);
+      await expireRequests(db);
+    }).catch((error: Error) => console.error('Meeting request expiry failed:', error.message));
+  }, 60_000);
+  expiryTimer.unref();
+  fastify.addHook('onClose', async () => clearInterval(expiryTimer));
   await fastify.register(rateLimit, { global: false });
   const loginLimit = fastify.rateLimit({ max: 20, timeWindow: '1 minute' });
   fastify.addHook('onRequest', async (req, reply) => {

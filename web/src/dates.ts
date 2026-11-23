@@ -4,6 +4,11 @@ export const local = (value: string) => DateTime.fromISO(value, { zone }).setLoc
 export const now = () => DateTime.now().setZone(zone).setLocale('he');
 export const shortDate = (value: string) => local(value).toFormat('dd/MM/yy');
 export const clock = (value: string) => local(value).toFormat('HH:mm');
+// Meeting times use 24:00 for midnight at the end of the selected day.
+export const endClock = (start: string, end: string) =>
+  local(start).toISODate() !== local(end).toISODate() && clock(end) === '00:00'
+    ? '24:00'
+    : clock(end);
 export const fullDate = (value: string) => local(value).toFormat('cccc, dd/MM/yy');
 export const sunday = () =>
   now()

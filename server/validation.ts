@@ -44,6 +44,13 @@ export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
       surname: 'שם משפחה',
       username: 'שם משתמש',
       password: 'סיסמה',
+      invitees: 'מוזמנים',
+      recurrence: 'חזרת הפגישה',
+      frequency: 'תדירות החזרה',
+      endDate: 'תאריך סיום הסדרה',
+      count: 'מספר הפגישות בסדרה',
+      supervisorId: 'ממונה',
+      personId: 'עובד/ת',
     };
     const path = result.error.issues[0]?.path ?? [];
     const field = String([...path].reverse().find((part) => labels[String(part)]) ?? '');

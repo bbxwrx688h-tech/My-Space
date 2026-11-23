@@ -21,6 +21,7 @@ import { Login } from './pages/Login';
 import { Onboarding } from './pages/Onboarding';
 import { Stations } from './pages/Stations';
 import { Users } from './pages/Users';
+import { Requests } from './pages/Requests';
 import { clock, shortDate } from './dates';
 
 const shellWidth = { width: { xs: '94%', sm: 'min(92%,1440px)' }, mx: 'auto' } as const;
@@ -29,6 +30,7 @@ const pages = {
   home: 'בית',
   stations: 'עמדות עבודה',
   calendar: 'חדר ישיבות',
+  requests: 'בקשות והזמנות',
   users: 'ניהול משתמשים',
 };
 function currentPage() {
@@ -135,7 +137,7 @@ export function App() {
           sx={{
             ...shellWidth,
             ...rowSx,
-            gap: 'clamp(1rem,10.5vw,10rem)',
+            gap: 'clamp(1rem,3vw,3rem)',
             minHeight: 68,
             '@media (max-width:800px)': { gap: 1.5, flexWrap: 'wrap', py: '10px' },
           }}
@@ -152,6 +154,7 @@ export function App() {
             sx={{
               ...rowSx,
               gap: '10px',
+              flexWrap: 'wrap',
               order: { xs: 3, sm: 0 },
               width: { xs: '100%', sm: 'auto' },
               justifyContent: { xs: 'space-around', sm: 'start' },
@@ -223,8 +226,10 @@ export function App() {
           <Stations data={data} saved={saved} />
         ) : page === 'calendar' ? (
           <Calendar data={data} saved={saved} />
+        ) : page === 'requests' ? (
+          <Requests data={data} saved={saved} />
         ) : data.me.role === 'admin' ? (
-          <Users />
+          <Users saved={saved} />
         ) : (
           <Home data={data} saved={saved} />
         )}

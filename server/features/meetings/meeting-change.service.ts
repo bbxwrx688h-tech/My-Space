@@ -1,123 +1,34 @@
 import {
   BadRequestException,
-  Body,
   ConflictException,
-  Controller,
   ForbiddenException,
-  Get,
+  Injectable,
   NotFoundException,
-  Post,
-  Query,
-  UseGuards,
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { z } from 'zod';
-import { Meeting, Person } from '../../shared/model';
-import { Employee, SessionGuard } from '../auth/session';
-import { notify, transaction } from '../db/connection';
-import { date, description, id, parse, shortText, zone } from '../validation';
-import { interval, meetingSelect } from '../meetings/schedule';
-import { requireReview } from '../meetings/review';
-import { visibleConflicts } from '../meetings/visibility';
-import { invalidateMeetingRequests, notifyInvitees } from '../meetings/changes';
+import { Meeting, Person } from '../../../shared/model';
+import { meetingChangeBody } from '../../../shared/contracts/meeting';
+import { messages } from '../../common/notifications/messages';
+import { notify, transaction } from '../../db/connection';
+import { zone } from '../../../shared/time';
+import { parse } from '../../common/validation/parse';
+import { interval, meetingSelect } from '../../meetings/schedule';
+import { requireReview } from '../../meetings/review';
+import { visibleConflicts } from '../../meetings/visibility';
+import { invalidateMeetingRequests, notifyInvitees } from '../../meetings/changes';
 import {
   assertNoHolds,
   expireRequests,
   insertMeetings,
   lockSchedule,
   makeBookingRequest,
-} from '../meetings/requests';
+} from '../../meetings/requests';
 
-const time = z.string().regex(/^([01]\d|2[0-3]):(00|15|30|45)$/);
-// A change includes its target version so edits cannot silently overwrite newer edits.
-const fields = z.object({
-  roomId: id,
-  date,
-  from: time,
-  until: z.union([time, z.literal('24:00')]),
-  title: shortText,
-  description,
-});
-const inviteesField = z.array(id).refine((items) => new Set(items).size === items.length);
-const target = z.object({ roomId: id, meetingId: id, version: id });
-const recurrence = z
-  .object({
-    frequency: z.enum(['daily', 'weekly']),
-    endDate: date.optional(),
-    count: z.number().int().min(1).optional(),
-  })
-  .refine((value) => (value.endDate === undefined) !== (value.count === undefined));
-const command = z.discriminatedUnion('action', [
-  fields.extend({
-    action: z.literal('create'),
-    recurrence: recurrence.optional(),
-    private: z.boolean().default(false),
-    visit: z.boolean().default(false),
-    invitees: inviteesField.default([]),
-  }),
-  fields.merge(target).extend({
-    action: z.literal('edit'),
-    scope: z.enum(['single', 'following']).default('single'),
-    private: z.boolean().optional(),
-    visit: z.boolean().optional(),
-    invitees: inviteesField.optional(),
-  }),
-  target.extend({ action: z.literal('cancel') }),
-]);
-
-@Controller('meetings')
-@UseGuards(SessionGuard)
-export class MeetingsController {
-  @Get() async list(@Employee() viewer: Person, @Query() query: unknown) {
-    const { room, start } = parse(
-      z.object({ room: z.coerce.number().int().positive(), start: date }),
-      query,
-    );
-    const first = DateTime.fromISO(start, { zone });
-    return transaction(async (db) => {
-      await lockSchedule(db);
-      await expireRequests(db);
-      const result = await db.query(
-        meetingSelect + ` WHERE m.room_id=$1 AND m.ends>$2 AND m.starts<$3 ORDER BY m.starts`,
-        [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate()],
-      );
-      const allowed = await db.query<{ id: number }>(
-        `SELECT m.id FROM meetings m JOIN people p ON p.id=m.organizer_id
-         WHERE m.room_id=$1 AND (m.organizer_id=$2 OR $3='admin' OR (p.role='manager' AND $3='boss' AND p.supervisor_id=$2)
-         OR EXISTS (SELECT 1 FROM meeting_invitations i WHERE i.meeting_id=m.id AND i.person_id=$2 AND i.status<>'declined'))`,
-        [room, viewer.id, viewer.role],
-      );
-      const visible = new Set(allowed.rows.map((row) => row.id));
-      const meetings = result.rows.map((meeting) =>
-        meeting.private && !visible.has(meeting.id)
-          ? { ...meeting, title: 'פגישה פרטית', description: '', visit: false, private: true }
-          : meeting,
-      );
-      const holds = await db.query(
-        `SELECT -s.id AS id,s.room_id AS "roomId",r.requester_id AS "organizerId",p.name || ' ' || p.surname AS organizer,
-         p.role,CASE WHEN visibility.concealed AND r.requester_id<>$4 AND $5<>'admin' AND (p.role<>'manager' OR $5<>'boss' OR p.supervisor_id IS DISTINCT FROM $4)
-           THEN 'פגישה פרטית' ELSE r.title END AS title,
-         CASE WHEN visibility.concealed AND r.requester_id<>$4 AND $5<>'admin' AND (p.role<>'manager' OR $5<>'boss' OR p.supervisor_id IS DISTINCT FROM $4)
-           THEN '' ELSE r.description END AS description,
-         s.starts AS start,s.ends AS "end",0 AS version,true AS pending,visibility.concealed AS private,
-         CASE WHEN visibility.concealed AND r.requester_id<>$4 AND $5<>'admin' AND (p.role<>'manager' OR $5<>'boss' OR p.supervisor_id IS DISTINCT FROM $4)
-           THEN false ELSE r.visit END AS visit
-         FROM meeting_request_slots s JOIN meeting_requests r ON r.id=s.request_id JOIN people p ON p.id=r.requester_id
-         CROSS JOIN LATERAL (SELECT r.private OR EXISTS (SELECT 1 FROM meetings original WHERE original.id=r.target_meeting_id AND original.private)
-           OR EXISTS (SELECT 1 FROM meeting_request_slots target JOIN meetings original ON original.id=target.target_meeting_id
-             WHERE target.request_id=r.id AND original.private) AS concealed) visibility
-         WHERE s.room_id=$1 AND s.ends>$2 AND s.starts<$3 AND r.status='pending' AND r.expires>now()`,
-        [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate(), viewer.id, viewer.role],
-      );
-      return [...meetings, ...holds.rows];
-    });
-  }
-
-  @Post() async change(@Employee() requester: Person, @Body() body: unknown) {
-    const { change, token } = parse(
-      z.object({ change: command, token: z.string().max(160).optional() }),
-      body,
-    );
+/** Applies meeting creation, edits and cancellations inside a single transaction. */
+@Injectable()
+export class MeetingChangeService {
+  async apply(requester: Person, body: unknown) {
+    const { change, token } = parse(meetingChangeBody, body);
     return transaction(async (db) => {
       await lockSchedule(db);
       await expireRequests(db);
@@ -272,7 +183,7 @@ export class MeetingsController {
             "UPDATE meeting_requests SET status='invalidated' WHERE id=$1 AND status='pending'",
             [-hold.id],
           );
-          await notify(db, hold.organizerId, 'בקשת הפגישה בוטלה בעקבות הזמנה של מנהל המערכת.');
+          await notify(db, hold.organizerId, messages.meetingRequestCanceledByAdminBooking);
         }
       };
       // Intervals are half-open: a meeting can start exactly when another ends.
@@ -333,10 +244,10 @@ export class MeetingsController {
           );
         await overrideHolds();
         for (const overlap of overlaps) {
-          await notifyInvitees(db, overlap.id, 'פגישה שהוזמנת אליה בוטלה.', actor.id);
+          await notifyInvitees(db, overlap.id, messages.meetingInvitationCanceled, actor.id);
           await db.query('DELETE FROM meetings WHERE id=$1', [overlap.id]);
           if (overlap.organizerId !== actor.id)
-            await notify(db, overlap.organizerId, 'הפגישה שלך בוטלה בעקבות הזמנה אחרת.');
+            await notify(db, overlap.organizerId, messages.meetingCanceledAfterAnotherBooking);
         }
         await invalidateMeetingRequests(
           db,
@@ -428,10 +339,10 @@ export class MeetingsController {
         );
         await overrideHolds();
         for (const overlap of overlaps) {
-          await notifyInvitees(db, overlap.id, 'פגישה שהוזמנת אליה בוטלה.', actor.id);
+          await notifyInvitees(db, overlap.id, messages.meetingInvitationCanceled, actor.id);
           await db.query('DELETE FROM meetings WHERE id=$1', [overlap.id]);
           if (overlap.organizerId !== actor.id)
-            await notify(db, overlap.organizerId, 'הפגישה שלך בוטלה בעקבות שינוי סדרה.');
+            await notify(db, overlap.organizerId, messages.meetingCanceledAfterSeriesChange);
         }
         await invalidateMeetingRequests(db, [
           ...targets.map((item) => item.id),
@@ -441,7 +352,7 @@ export class MeetingsController {
           await notifyInvitees(
             db,
             slot.targetMeetingId!,
-            'פרטי פגישה חוזרת שהוזמנת אליה עודכנו.',
+            messages.recurringMeetingInvitationDetailsUpdated,
             actor.id,
           );
           if (change.invitees) {
@@ -454,7 +365,8 @@ export class MeetingsController {
                 'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
                 [slot.targetMeetingId, invitee],
               );
-              if (inserted.rowCount) await notify(db, invitee, `הוזמנת לפגישה ״${change.title}״.`);
+              if (inserted.rowCount)
+                await notify(db, invitee, messages.invitedToMeeting(change.title));
             }
           }
           await db.query(
@@ -472,7 +384,7 @@ export class MeetingsController {
           );
         }
         if (original.organizerId !== actor.id)
-          await notify(db, original.organizerId, 'סדרת הפגישות שלך עודכנה על ידי מנהל/ת.');
+          await notify(db, original.organizerId, messages.meetingSeriesUpdatedByAdmin);
         return { id: original.id };
       }
       if (
@@ -533,13 +445,13 @@ export class MeetingsController {
 
       // Cancellation, notifications and the replacement meeting commit together.
       for (const meeting of overlaps) {
-        await notifyInvitees(db, meeting.id, 'פגישה שהוזמנת אליה בוטלה.', actor.id);
+        await notifyInvitees(db, meeting.id, messages.meetingInvitationCanceled, actor.id);
         await db.query('DELETE FROM meetings WHERE id=$1', [meeting.id]);
         if (meeting.organizerId !== actor.id)
           await notify(
             db,
             meeting.organizerId,
-            `הפגישה ״${meeting.title}״ בוטלה עקב הזמנה של ${actor.name} ${actor.surname}.`,
+            messages.meetingCanceledByBooking(meeting.title, actor.name, actor.surname),
           );
       }
       await invalidateMeetingRequests(db, [
@@ -547,20 +459,29 @@ export class MeetingsController {
         ...(original ? [original.id] : []),
       ]);
       if (original && original.organizerId !== actor.id) {
-        const verb = change.action === 'cancel' ? 'בוטלה' : 'עודכנה';
         await notify(
           db,
           original.organizerId,
-          `הפגישה ״${original.title}״ ${verb} על ידי ${actor.name} ${actor.surname}.`,
+          messages.meetingChangedBy(
+            original.title,
+            change.action === 'cancel',
+            actor.name,
+            actor.surname,
+          ),
         );
       }
       if (change.action === 'cancel') {
-        await notifyInvitees(db, change.meetingId, 'פגישה שהוזמנת אליה בוטלה.', actor.id);
+        await notifyInvitees(db, change.meetingId, messages.meetingInvitationCanceled, actor.id);
         await db.query('DELETE FROM meetings WHERE id=$1', [change.meetingId]);
         return { ok: true };
       }
       const values = [change.title, change.description, ...times!];
-      await notifyInvitees(db, change.meetingId, 'פרטי פגישה שהוזמנת אליה עודכנו.', actor.id);
+      await notifyInvitees(
+        db,
+        change.meetingId,
+        messages.meetingInvitationDetailsUpdated,
+        actor.id,
+      );
       if (change.invitees) {
         const invitees = change.invitees.filter((personId) => personId !== original!.organizerId);
         const people = await db.query('SELECT id FROM people WHERE id=ANY($1::int[])', [invitees]);
@@ -575,7 +496,7 @@ export class MeetingsController {
             'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
             [change.meetingId, invitee],
           );
-          if (inserted.rowCount) await notify(db, invitee, `הוזמנת לפגישה ״${change.title}״.`);
+          if (inserted.rowCount) await notify(db, invitee, messages.invitedToMeeting(change.title));
         }
       }
       const result = await db.query(

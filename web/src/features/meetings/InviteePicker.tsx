@@ -1,8 +1,8 @@
 import { Autocomplete, Box, TextField } from '@mui/material';
 import { useEffect, useState } from 'react';
-import { DirectoryPerson } from '../../../shared/model';
-import { api } from '../api';
-import { ErrorLine } from './Fields';
+import { DirectoryPerson } from '@shared/model';
+import { endpoints } from '@app/endpoints';
+import { ErrorLine } from '@app/components/Fields';
 
 export function InviteePicker({
   value,
@@ -26,7 +26,8 @@ export function InviteePicker({
     setLoading(true);
     // Ignore stale responses when a newer search has already been typed.
     const timer = setTimeout(() => {
-      api<DirectoryPerson[]>('people/search?q=' + encodeURIComponent(search.trim()))
+      endpoints.people
+        .search(search.trim())
         .then((people) => {
           if (current) {
             setResults(people);

@@ -1,34 +1,30 @@
 import {
   BadRequestException,
-  Body,
   ConflictException,
-  Controller,
   ForbiddenException,
+  Injectable,
   NotFoundException,
-  Post,
-  UseGuards,
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { z } from 'zod';
-import { Person } from '../../shared/model';
-import { Employee, SessionGuard } from '../auth/session';
-import { notify, transaction } from '../db/connection';
-import { date, id, parse, selectedDays, stationFields, today } from '../validation';
-import { addStation } from '../stations/station';
+import { Person } from '../../../shared/model';
+import { changeDaysBody, publishOfferBody } from '../../../shared/contracts/station';
+import { messages } from '../../common/notifications/messages';
+import { notify, transaction } from '../../db/connection';
+import { stationFields } from '../../../shared/contracts/common';
+import { today } from '../../../shared/time';
+import { parse } from '../../common/validation/parse';
+import { addStation } from '../../stations/station';
 
-@Controller('stations')
-@UseGuards(SessionGuard)
-export class StationsController {
-  @Post() create(@Employee() me: Person, @Body() body: unknown) {
+/** Station registration, offer publishing and day booking workflows. */
+@Injectable()
+export class StationService {
+  create(me: Person, body: unknown) {
     const station = parse(stationFields, body);
     return transaction((db) => addStation(db, me.id, station));
   }
 
-  @Post('offers') publish(@Employee() me: Person, @Body() body: unknown) {
-    const { stationId, start, end, note } = parse(
-      z.object({ stationId: id, start: date, end: date, note: z.string().trim().max(2000) }),
-      body,
-    );
+  publish(me: Person, body: unknown) {
+    const { stationId, start, end, note } = parse(publishOfferBody, body);
     if (start < today() || end < start) throw new BadRequestException('טווח התאריכים אינו תקין');
     return transaction(async (db) => {
       const station = await db.query('SELECT owner_id FROM stations WHERE id=$1', [stationId]);
@@ -49,15 +45,8 @@ export class StationsController {
     });
   }
 
-  @Post('days') changeDays(@Employee() me: Person, @Body() body: unknown) {
-    const { action, offerId, days } = parse(
-      z.object({
-        action: z.enum(['book', 'release', 'withdraw']),
-        offerId: id,
-        days: selectedDays,
-      }),
-      body,
-    );
+  changeDays(me: Person, body: unknown) {
+    const { action, offerId, days } = parse(changeDaysBody, body);
     if (days.some((day) => day < today()))
       throw new BadRequestException('ניתן לשנות רק ימים מהיום והלאה');
     return transaction(async (db) => {
@@ -95,7 +84,7 @@ export class StationsController {
             await notify(
               db,
               row.borrower_id,
-              `העמדה בחדר ${offer.room} באתר ${offer.site} הוסרה מתאריך ${day}. ההזמנה בוטלה.`,
+              messages.stationBookingCanceled(offer.room, offer.site, day),
             );
           }
         }
@@ -118,7 +107,7 @@ export class StationsController {
           await notify(
             db,
             offer.owner_id,
-            `${me.name} ${me.surname} הזמין/ה את העמדה בחדר ${offer.room} באתר ${offer.site} לתאריכים ${dates.join(', ')}.`,
+            messages.stationBooked(me.name, me.surname, offer.room, offer.site, dates),
           );
         }
       }

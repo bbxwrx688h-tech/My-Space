@@ -7,7 +7,7 @@ import { prefixer } from 'stylis';
 import { heIL } from '@mui/material/locale';
 import { alpha, lighten } from '@mui/material/styles';
 import { colors } from './colors';
-import { App } from './App';
+import { App } from './app/App';
 import CssBaseline from '@mui/material/CssBaseline';
 
 // Native form validation is localized independently of the browser language.

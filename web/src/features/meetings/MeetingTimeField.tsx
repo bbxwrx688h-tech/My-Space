@@ -1,5 +1,5 @@
 import { Box, NativeSelect, Typography } from '@mui/material';
-import { selectSx } from '../layout';
+import { selectSx } from '@app/layout';
 
 export const slots = Array.from(
   { length: 96 },

@@ -10,7 +10,7 @@ import {
 } from '../layout';
 import { useState } from 'react';
 import { Person, Site } from '../../../shared/model';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { Brand, ErrorLine, useAction } from '../components/Fields';
 import { SiteSelect, StationFields, stationFrom } from '../components/StationFields';
 
@@ -32,7 +32,10 @@ export function Onboarding({ me, done }: { me: Person; done: () => Promise<void>
             e.preventDefault();
             const data = new FormData(e.currentTarget);
             void action.run(async () => {
-              await api('onboarding', { site, station: owns ? stationFrom(data) : undefined });
+              await endpoints.workspace.onboard({
+                site,
+                station: owns ? stationFrom(data) : undefined,
+              });
               await done();
             });
           }}

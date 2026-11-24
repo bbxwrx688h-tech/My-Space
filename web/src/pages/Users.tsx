@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Person } from '../../../shared/model';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { buttonSx, panelSx, selectSx, textInputSx } from '../layout';
 import { ErrorLine, Field, useAction } from '../components/Fields';
 import { SiteSelect } from '../components/StationFields';
@@ -35,7 +35,8 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
     let active = true;
     setLoading(true);
     setError('');
-    api<Person[]>('admin/users')
+    endpoints.users
+      .list()
       .then((result) => {
         if (active) setUsers(result);
       })
@@ -102,7 +103,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
         onSubmit={(event) => {
           event.preventDefault();
           void roomAction.run(async () => {
-            await api('admin/rooms', { name: roomName, site: roomSite });
+            await endpoints.users.createRoom({ name: roomName, site: roomSite });
             setRoomName('');
             await saved();
           });
@@ -170,7 +171,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                           onChange={(event) => {
                             const role = event.target.value as 'user' | 'manager' | 'boss';
                             void action.run(async () => {
-                              await api('admin/role', { personId: person.id, role });
+                              await endpoints.users.setRole({ personId: person.id, role });
                               setUsers((previous) =>
                                 previous.map((user) =>
                                   user.id === person.id
@@ -201,7 +202,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                                 ? Number(event.target.value)
                                 : null;
                               void action.run(async () => {
-                                await api('admin/supervisor', {
+                                await endpoints.users.setSupervisor({
                                   personId: person.id,
                                   supervisorId,
                                 });

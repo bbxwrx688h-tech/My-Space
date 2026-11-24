@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { Person } from '../../shared/model';
+import { messages } from '../common/notifications/messages';
 import { notify } from '../db/connection';
 import { invalidateMeetingRequests, notifyInvitees } from './changes';
 
@@ -22,7 +23,7 @@ export async function expireRequests(db: PoolClient) {
     "UPDATE meeting_requests SET status='expired' WHERE status='pending' AND expires<=now() RETURNING id,requester_id",
   );
   for (const request of expired.rows)
-    await notify(db, request.requester_id, 'בקשת הפגישה פגה ותפיסת החדר שוחררה.');
+    await notify(db, request.requester_id, messages.meetingRequestExpired);
   // An edit cannot be approved after its original meeting has ended or changed.
   const invalidated = await db.query<{ requester_id: number }>(
     `UPDATE meeting_requests r SET status='invalidated' WHERE r.status='pending' AND
@@ -34,16 +35,12 @@ export async function expireRequests(db: PoolClient) {
      RETURNING requester_id`,
   );
   for (const request of invalidated.rows)
-    await notify(
-      db,
-      request.requester_id,
-      'בקשת שינוי הפגישה בוטלה כי הפגישה המקורית הסתיימה או השתנתה.',
-    );
+    await notify(db, request.requester_id, messages.meetingChangeRequestInvalidated);
   const exchanges = await db.query<{ requester_id: number }>(
     "UPDATE meeting_exchange_requests SET status='expired' WHERE status='pending' AND expires<=now() RETURNING requester_id",
   );
   for (const request of exchanges.rows)
-    await notify(db, request.requester_id, 'בקשת השחרור או ההחלפה פגה.');
+    await notify(db, request.requester_id, messages.exchangeRequestExpired);
 }
 
 export async function assertNoHolds(
@@ -185,7 +182,7 @@ export async function makeBookingRequest(
       requestId,
       approver,
     ]);
-    await notify(db, approver, `${actor.name} ${actor.surname} שלח/ה בקשה להזמנת חדר ישיבות.`);
+    await notify(db, approver, messages.meetingRequestSubmitted(actor.name, actor.surname));
   }
   return { id: requestId, pending: true };
 }
@@ -256,7 +253,7 @@ export async function decideBooking(
     throw new ForbiddenException('אין הרשאה לאשר בקשה זו');
   if (!approve) {
     await db.query("UPDATE meeting_requests SET status='rejected' WHERE id=$1", [requestId]);
-    await notify(db, request.requester_id, 'בקשת הפגישה נדחתה ותפיסת החדר שוחררה.');
+    await notify(db, request.requester_id, messages.meetingRequestRejected);
     return { status: 'rejected' };
   }
   // A boss approves only their own row. The admin may approve every row.
@@ -296,7 +293,7 @@ export async function decideBooking(
       requester.role !== 'boss')
   ) {
     await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-    await notify(db, request.requester_id, 'בקשת הפגישה בוטלה בגלל שינוי בתפקיד או בממונה.');
+    await notify(db, request.requester_id, messages.meetingRequestCanceledAfterRoleChange);
     return { status: 'invalidated' };
   }
   const slots = (
@@ -319,7 +316,11 @@ export async function decideBooking(
       new Date(target.rows[0].ends).getTime() <= Date.now()
     ) {
       await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-      await notify(db, request.requester_id, 'בקשת השינוי בוטלה כי הפגישה המקורית השתנתה.');
+      await notify(
+        db,
+        request.requester_id,
+        messages.meetingChangeRequestCanceledAfterOriginalChanged,
+      );
       return { status: 'invalidated' };
     }
   }
@@ -341,7 +342,11 @@ export async function decideBooking(
           ))
       ) {
         await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-        await notify(db, request.requester_id, 'בקשת השינוי בוטלה כי אחת הפגישות השתנתה.');
+        await notify(
+          db,
+          request.requester_id,
+          messages.meetingChangeRequestCanceledAfterMeetingChanged,
+        );
         return { status: 'invalidated' };
       }
     }
@@ -373,7 +378,7 @@ export async function decideBooking(
         )
       ) {
         await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-        await notify(db, request.requester_id, 'בקשת הפגישה בוטלה כי לוח הפגישות השתנה.');
+        await notify(db, request.requester_id, messages.meetingRequestCanceledAfterScheduleChanged);
         return { status: 'invalidated' };
       }
     }
@@ -390,7 +395,7 @@ export async function decideBooking(
       current.rows[0].role !== snapshot.organizer_role
     ) {
       await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-      await notify(db, request.requester_id, 'בקשת הפגישה בוטלה כי אחת הפגישות השתנתה.');
+      await notify(db, request.requester_id, messages.meetingRequestCanceledAfterMeetingChanged);
       return { status: 'invalidated' };
     }
   }
@@ -399,12 +404,12 @@ export async function decideBooking(
     await notifyInvitees(
       db,
       snapshot.meeting_id,
-      'פגישה שהוזמנת אליה בוטלה.',
+      messages.meetingInvitationCanceled,
       request.requester_id,
     );
     await db.query('DELETE FROM meetings WHERE id=$1', [snapshot.meeting_id]);
     if (snapshot.organizer_id !== request.requester_id)
-      await notify(db, snapshot.organizer_id, 'הפגישה שלך בוטלה בעקבות בקשה שאושרה.');
+      await notify(db, snapshot.organizer_id, messages.meetingCanceledAfterApproval);
   }
   await invalidateMeetingRequests(
     db,
@@ -421,7 +426,7 @@ export async function decideBooking(
       await notifyInvitees(
         db,
         slot.target_meeting_id,
-        'פרטי פגישה שהוזמנת אליה עודכנו.',
+        messages.meetingInvitationDetailsUpdated,
         request.requester_id,
       );
       await db.query(
@@ -434,7 +439,7 @@ export async function decideBooking(
           'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
           [slot.target_meeting_id, invitee],
         );
-        if (added.rowCount) await notify(db, invitee, `הוזמנת לפגישה ״${request.title}״.`);
+        if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
       }
       await db.query(
         'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
@@ -450,14 +455,14 @@ export async function decideBooking(
         ],
       );
       if (slot.target_organizer_id !== request.requester_id)
-        await notify(db, slot.target_organizer_id, 'פגישה שלך עודכנה לאחר אישור בקשה.');
+        await notify(db, slot.target_organizer_id, messages.meetingUpdatedAfterRequestApproval);
     }
     await invalidateMeetingRequests(db, targetIds, requestId);
   } else if (request.kind === 'edit') {
     await notifyInvitees(
       db,
       request.target_meeting_id,
-      'פרטי פגישה שהוזמנת אליה עודכנו.',
+      messages.meetingInvitationDetailsUpdated,
       request.requester_id,
     );
     await db.query(
@@ -469,7 +474,7 @@ export async function decideBooking(
         'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
         [request.target_meeting_id, invitee],
       );
-      if (added.rowCount) await notify(db, invitee, `הוזמנת לפגישה ״${request.title}״.`);
+      if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
     }
     await db.query(
       'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
@@ -500,6 +505,6 @@ export async function decideBooking(
       })),
     });
   await db.query("UPDATE meeting_requests SET status='approved' WHERE id=$1", [requestId]);
-  await notify(db, request.requester_id, 'בקשת הפגישה אושרה והפגישה נקבעה.');
+  await notify(db, request.requester_id, messages.meetingRequestApproved);
   return { status: 'approved' };
 }

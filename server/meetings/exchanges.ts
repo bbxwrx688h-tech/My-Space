@@ -6,8 +6,9 @@ import {
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { Person } from '../../shared/model';
+import { messages } from '../common/notifications/messages';
 import { notify } from '../db/connection';
-import { zone } from '../validation';
+import { zone } from '../../shared/time';
 import { DateTime } from 'luxon';
 import { invalidateMeetingRequests, notifyInvitees } from './changes';
 import { assertNoHolds, expireRequests, lockSchedule } from './requests';
@@ -85,9 +86,7 @@ export async function createExchange(
       await notify(
         db,
         owner,
-        kind === 'release'
-          ? 'התקבלה בקשה לשחרור חדר הישיבות של הפגישה שלך.'
-          : 'התקבלה בקשה להחלפת פגישות.',
+        kind === 'release' ? messages.roomReleaseRequested : messages.meetingSwapRequested,
       );
   }
   if (kind === 'swap' && owners.every((owner) => owner === actor.id))
@@ -121,7 +120,7 @@ export async function decideExchange(
     await db.query("UPDATE meeting_exchange_requests SET status='rejected' WHERE id=$1", [
       requestId,
     ]);
-    await notify(db, request.requester_id, 'בקשת השחרור או ההחלפה נדחתה.');
+    await notify(db, request.requester_id, messages.exchangeRequestRejected);
     return { status: 'rejected' };
   }
   if (actor.role === 'admin')
@@ -156,7 +155,7 @@ export async function decideExchange(
     await db.query("UPDATE meeting_exchange_requests SET status='invalidated' WHERE id=$1", [
       requestId,
     ]);
-    await notify(db, request.requester_id, 'הבקשה בוטלה כי פרטי הפגישה השתנו.');
+    await notify(db, request.requester_id, messages.exchangeRequestCanceledAfterDetailsChanged);
     return { status: 'invalidated' };
   }
   if (first.starts.getTime() <= Date.now() || (second && second.starts.getTime() <= Date.now()))
@@ -202,10 +201,15 @@ export async function decideExchange(
       'UPDATE meetings SET room_id=$2,starts=$3,ends=$4,version=version+1 WHERE id=$1',
       [second.id, first.room_id, first.starts, first.ends],
     );
-    await notifyInvitees(db, first.id, 'מועד או חדר של פגישה שהוזמנת אליה השתנה.', actor.id);
-    await notifyInvitees(db, second.id, 'מועד או חדר של פגישה שהוזמנת אליה השתנה.', actor.id);
+    await notifyInvitees(db, first.id, messages.meetingInvitationTimeOrRoomChanged, actor.id);
+    await notifyInvitees(db, second.id, messages.meetingInvitationTimeOrRoomChanged, actor.id);
   } else {
-    await notifyInvitees(db, first.id, 'פגישה שהוזמנת אליה בוטלה לאחר אישור שחרור החדר.', actor.id);
+    await notifyInvitees(
+      db,
+      first.id,
+      messages.meetingInvitationCanceledAfterRoomRelease,
+      actor.id,
+    );
     await db.query('DELETE FROM meetings WHERE id=$1', [first.id]);
   }
   await db.query("UPDATE meeting_exchange_requests SET status='approved' WHERE id=$1", [requestId]);
@@ -218,7 +222,7 @@ export async function decideExchange(
     await notify(
       db,
       owner,
-      second ? 'בקשת החלפת הפגישות אושרה והמועדים הוחלפו.' : 'בקשת השחרור אושרה והפגישה בוטלה.',
+      second ? messages.meetingSwapRequestApproved : messages.roomReleaseRequestApproved,
     );
   return { status: 'approved' };
 }

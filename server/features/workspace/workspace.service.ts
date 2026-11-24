@@ -1,71 +1,36 @@
 import {
   BadRequestException,
-  Body,
   ConflictException,
-  Controller,
   ForbiddenException,
-  Get,
+  Injectable,
   NotFoundException,
-  Post,
-  Query,
-  UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { Person } from '../../shared/model';
-import { Employee, personColumns, SessionGuard } from '../auth/session';
-import { pool, transaction } from '../db/connection';
-import { meetingSelect } from '../meetings/schedule';
-import { addStation } from '../stations/station';
-import { expireRequests, lockSchedule } from '../meetings/requests';
-import { id, parse, site, stationFields, today } from '../validation';
+import { Person } from '../../../shared/model';
+import {
+  noticeReadBody,
+  onboardingBody,
+  peopleSearchQuery,
+  roleBody,
+  roomBody,
+  supervisorBody,
+} from '../../../shared/contracts/workspace';
+import { personColumns } from '../../auth/session';
+import { pool, transaction } from '../../db/connection';
+import { expireRequests, lockSchedule } from '../../meetings/requests';
+import { addStation } from '../../stations/station';
 
-const stationSelect = `SELECT s.id,s.owner_id AS "ownerId",p.name || ' ' || p.surname AS owner,
-  s.site,s.room,s.os,s.description FROM stations s JOIN people p ON p.id=s.owner_id`;
+type Onboarding = z.infer<typeof onboardingBody>;
+type NoticeRead = z.infer<typeof noticeReadBody>;
+type PeopleSearch = z.infer<typeof peopleSearchQuery>;
+type Room = z.infer<typeof roomBody>;
+type Role = z.infer<typeof roleBody>;
+type Supervisor = z.infer<typeof supervisorBody>;
 
-@Controller()
-@UseGuards(SessionGuard)
-export class WorkspaceController {
-  @Get('workspace') async read(@Employee() me: Person) {
-    const [rooms, stations, offers, meetings, notices] = await Promise.all([
-      pool.query('SELECT * FROM rooms ORDER BY site,name'),
-      pool.query(stationSelect + ' WHERE s.owner_id=$1 ORDER BY s.id', [me.id]),
-      // Offers are returned across every site. A home site does not limit where
-      // an employee may borrow a station.
-      // Other borrowers stay anonymous. The viewer can recognize their own bookings.
-      pool.query(
-        `SELECT o.id,o.note,to_jsonb(station) AS station,
-        json_agg(json_build_object('date',d.day::text,'status',CASE
-          WHEN d.borrower_id=$1 THEN 'mine' WHEN d.borrower_id IS NULL THEN 'available'
-          ELSE 'occupied' END) ORDER BY d.day) AS days
-        FROM offers o JOIN (${stationSelect}) station ON station.id=o.station_id
-        JOIN offer_days d ON d.offer_id=o.id WHERE d.day >= $2::date
-        GROUP BY o.id,station ORDER BY min(d.day),o.id`,
-        [me.id, today()],
-      ),
-      pool.query(
-        meetingSelect +
-          ` WHERE (m.organizer_id=$1 OR EXISTS
-        (SELECT 1 FROM meeting_invitations i WHERE i.meeting_id=m.id AND i.person_id=$1 AND i.status='accepted'))
-        AND m.ends>now() ORDER BY m.starts`,
-        [me.id],
-      ),
-      pool.query(
-        'SELECT id,message,created,seen FROM notices WHERE person_id=$1 ORDER BY id DESC',
-        [me.id],
-      ),
-    ]);
-    return {
-      me,
-      rooms: rooms.rows,
-      stations: stations.rows,
-      offers: offers.rows,
-      meetings: meetings.rows,
-      notices: notices.rows,
-    };
-  }
-
-  @Post('onboarding') onboard(@Employee() me: Person, @Body() body: unknown) {
-    const input = parse(z.object({ site, station: stationFields.optional() }), body);
+/** Setup, directory, notices and administration workflows for the workspace. */
+@Injectable()
+export class WorkspaceService {
+  onboard(me: Person, input: Onboarding) {
     return transaction(async (db) => {
       // Updating only an unset site makes onboarding safe against repeat submissions.
       const result = await db.query('UPDATE people SET site=$2 WHERE id=$1 AND site IS NULL', [
@@ -78,8 +43,8 @@ export class WorkspaceController {
     });
   }
 
-  @Post('notices/read') async markRead(@Employee() me: Person, @Body() body: unknown) {
-    const { through } = parse(z.object({ through: id }), body);
+  async markRead(me: Person, input: NoticeRead) {
+    const { through } = input;
     // Newer notifications that arrived after the screen loaded remain unread.
     await pool.query('UPDATE notices SET seen=true WHERE person_id=$1 AND id<=$2 AND NOT seen', [
       me.id,
@@ -88,7 +53,7 @@ export class WorkspaceController {
     return { ok: true };
   }
 
-  @Get('admin/users') async users(@Employee() me: Person) {
+  async users(me: Person) {
     if (me.role !== 'admin') throw new ForbiddenException('נדרשת הרשאת ניהול');
     return (
       await pool.query(
@@ -96,9 +61,10 @@ export class WorkspaceController {
       )
     ).rows;
   }
-  @Get('people/search') async searchPeople(@Employee() me: Person, @Query() query: unknown) {
+
+  async searchPeople(me: Person, input: PeopleSearch) {
     if (me.role === 'user') throw new ForbiddenException('אין הרשאה להזמין לפגישה');
-    const { q } = parse(z.object({ q: z.string().trim().max(150).default('') }), query);
+    const { q } = input;
     if (!q) return [];
     // Treat wildcard characters literally and never return password or role data.
     const term = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
@@ -110,9 +76,9 @@ export class WorkspaceController {
       )
     ).rows;
   }
-  @Post('admin/rooms') async createRoom(@Employee() me: Person, @Body() body: unknown) {
+
+  async createRoom(me: Person, input: Room) {
     if (me.role !== 'admin') throw new ForbiddenException('נדרשת הרשאת ניהול');
-    const input = parse(z.object({ site, name: z.string().trim().min(1).max(150) }), body);
     try {
       return await transaction(async (db) => {
         const room = await db.query(
@@ -127,12 +93,9 @@ export class WorkspaceController {
       throw error;
     }
   }
-  @Post('admin/role') async role(@Employee() me: Person, @Body() body: unknown) {
+
+  role(me: Person, input: Role) {
     if (me.role !== 'admin') throw new ForbiddenException('נדרשת הרשאת ניהול');
-    const input = parse(
-      z.object({ personId: id, role: z.enum(['user', 'manager', 'boss']) }),
-      body,
-    );
     return transaction(async (db) => {
       await lockSchedule(db);
       await expireRequests(db);
@@ -181,9 +144,8 @@ export class WorkspaceController {
     });
   }
 
-  @Post('admin/supervisor') async supervisor(@Employee() me: Person, @Body() body: unknown) {
+  supervisor(me: Person, input: Supervisor) {
     if (me.role !== 'admin') throw new ForbiddenException('נדרשת הרשאת ניהול');
-    const input = parse(z.object({ personId: id, supervisorId: id.nullable() }), body);
     return transaction(async (db) => {
       await lockSchedule(db);
       await expireRequests(db);

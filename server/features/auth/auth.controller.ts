@@ -10,12 +10,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
-import { pool } from '../db/connection';
-import { parse } from '../validation';
-import { resolveIdentity } from '../auth/identity';
-import { matchesPassword } from '../auth/password';
-import { devEnabled, signIn, signOut } from '../auth/session';
+import { adminLoginBody, devLoginBody } from '../../../shared/contracts/auth';
+import { pool } from '../../db/connection';
+import { parse } from '../../common/validation/parse';
+import { resolveIdentity } from '../../auth/identity';
+import { matchesPassword } from '../../auth/password';
+import { devEnabled, signIn, signOut } from '../../auth/session';
 
 const devPeople = [
   { name: 'נועה', surname: 'לוי', UPN: 'noa@example.test' },
@@ -34,7 +34,7 @@ export class AuthController {
   }
   @Post('dev') async dev(@Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     if (!devEnabled()) throw new NotFoundException();
-    const { upn } = parse(z.object({ upn: z.string() }), body);
+    const { upn } = parse(devLoginBody, body);
     const claims = devPeople.find((p) => p.UPN === upn);
     if (!claims) throw new UnauthorizedException('חשבון הפיתוח אינו זמין');
     return signIn(await resolveIdentity('dev', claims), reply);
@@ -43,10 +43,7 @@ export class AuthController {
     @Body() body: unknown,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const input = parse(
-      z.object({ username: z.string().max(150), password: z.string().max(512) }),
-      body,
-    );
+    const input = parse(adminLoginBody, body);
     const { rows } = await pool.query(
       "SELECT id,password_hash FROM people WHERE source='local' AND upn=$1",
       [input.username],

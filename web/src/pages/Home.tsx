@@ -17,7 +17,7 @@ import { CalendarDays, ChevronLeft, FileText, Monitor } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
 import { clock, endClock, fullDate, now } from '../dates';
 import { DaysDialog, offerRange, PublishDialog } from '../components/StationDialogs';
-import { MeetingDialog } from '../components/MeetingDialog';
+import { MeetingDialog } from '@app/features/meetings/MeetingDialog';
 
 const featureSx = {
   display: 'grid',

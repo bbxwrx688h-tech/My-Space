@@ -1,6 +1,6 @@
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { stationFields } from '../validation';
+import { stationFields } from '../../shared/contracts/common';
 
 // Station creation is shared by onboarding and the station management page.
 export async function addStation(

@@ -7,6 +7,12 @@ export default defineConfig(({ mode, command }) => {
   const env = command === 'serve' ? loadEnv(mode, process.cwd(), 'PORT') : {};
   return {
     root: resolve('web'),
+    resolve: {
+      alias: {
+        '@app': resolve('web/src'),
+        '@shared': resolve('shared'),
+      },
+    },
     plugins: [react()],
     build: {
       outDir: resolve('dist/web'),

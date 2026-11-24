@@ -1,7 +1,7 @@
 import { Box, Button, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { ExchangeRequest, Invitation, MeetingRequest, Workspace } from '../../../shared/model';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { clock, endClock, fullDate } from '../dates';
 import { buttonSx, panelSx, rowSx, stackSx } from '../layout';
 import { ErrorLine, useAction } from '../components/Fields';
@@ -19,9 +19,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
   useEffect(() => {
     let current = true;
     Promise.all([
-      api<MeetingRequest[]>('meetings/requests'),
-      api<ExchangeRequest[]>('meetings/exchange'),
-      api<Invitation[]>('meetings/invitations'),
+      endpoints.meetings.requests(),
+      endpoints.meetings.exchanges(),
+      endpoints.meetings.invitations(),
     ])
       .then(([booking, exchange, invites]) => {
         if (!current) return;
@@ -41,9 +41,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
     };
   }, [data, revision]);
 
-  function decide(path: string, payload: Record<string, unknown>) {
+  function decide(request: () => Promise<unknown>) {
     void action.run(async () => {
-      await api(path, payload);
+      await request();
       await saved();
     });
   }
@@ -90,7 +90,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
               variant="contained"
               disabled={action.busy}
               onClick={() =>
-                decide('meetings/invitations/decision', { meetingId: invitation.id, accept: true })
+                decide(() =>
+                  endpoints.meetings.invitationDecision({ meetingId: invitation.id, accept: true }),
+                )
               }
             >
               אישור הגעה
@@ -99,7 +101,12 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
               sx={buttonSx}
               disabled={action.busy}
               onClick={() =>
-                decide('meetings/invitations/decision', { meetingId: invitation.id, accept: false })
+                decide(() =>
+                  endpoints.meetings.invitationDecision({
+                    meetingId: invitation.id,
+                    accept: false,
+                  }),
+                )
               }
             >
               דחייה
@@ -160,7 +167,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
                   variant="contained"
                   disabled={action.busy}
                   onClick={() =>
-                    decide('meetings/requests/decision', { requestId: request.id, approve: true })
+                    decide(() =>
+                      endpoints.meetings.requestDecision({ requestId: request.id, approve: true }),
+                    )
                   }
                 >
                   אישור
@@ -169,7 +178,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
                   sx={buttonSx}
                   disabled={action.busy}
                   onClick={() =>
-                    decide('meetings/requests/decision', { requestId: request.id, approve: false })
+                    decide(() =>
+                      endpoints.meetings.requestDecision({ requestId: request.id, approve: false }),
+                    )
                   }
                 >
                   דחייה
@@ -185,7 +196,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
               <Button
                 sx={buttonSx}
                 disabled={action.busy}
-                onClick={() => decide('meetings/requests/cancel', { requestId: request.id })}
+                onClick={() =>
+                  decide(() => endpoints.meetings.requestCancel({ requestId: request.id }))
+                }
               >
                 ביטול הבקשה
               </Button>
@@ -220,7 +233,9 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
                   variant="contained"
                   disabled={action.busy}
                   onClick={() =>
-                    decide('meetings/exchange/decision', { requestId: request.id, approve: true })
+                    decide(() =>
+                      endpoints.meetings.exchangeDecision({ requestId: request.id, approve: true }),
+                    )
                   }
                 >
                   אישור
@@ -229,7 +244,12 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
                   sx={buttonSx}
                   disabled={action.busy}
                   onClick={() =>
-                    decide('meetings/exchange/decision', { requestId: request.id, approve: false })
+                    decide(() =>
+                      endpoints.meetings.exchangeDecision({
+                        requestId: request.id,
+                        approve: false,
+                      }),
+                    )
                   }
                 >
                   דחייה

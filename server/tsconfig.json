@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "baseUrl": "..",
+    "paths": {
+      "@server/*": ["server/*"],
+      "@shared/*": ["shared/*"]
+    },
     "rootDir": "..",
     "outDir": "../dist",
     "strict": true,

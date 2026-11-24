@@ -3,10 +3,10 @@ import { rowSx, panelSx, filterBarSx, pageHeadingSx, buttonSx, selectSx } from '
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Meeting, Workspace } from '../../../shared/model';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { clock, endClock, fullDate, local, now, shortDate, sunday } from '../dates';
 import { ErrorLine, Field } from '../components/Fields';
-import { MeetingDialog } from '../components/MeetingDialog';
+import { MeetingDialog } from '@app/features/meetings/MeetingDialog';
 
 export function Calendar({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [start, setStart] = useState(() => sunday().toISODate()!);
@@ -18,7 +18,8 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
   const [dialog, setDialog] = useState<{ date?: string; meeting?: Meeting } | null>(null);
   useEffect(() => {
     let current = true;
-    api<Meeting[]>('meetings?room=' + roomId + '&start=' + start)
+    endpoints.meetings
+      .list(roomId, start)
       .then((list) => {
         if (current) {
           setMeetings(list);

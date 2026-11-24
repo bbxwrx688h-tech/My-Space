@@ -1,4 +1,5 @@
 import { PoolClient } from 'pg';
+import { messages } from '../common/notifications/messages';
 import { notify } from '../db/connection';
 
 // Pending takeover approvals are tied to specific meeting versions. Release
@@ -18,14 +19,14 @@ export async function invalidateMeetingRequests(
     [meetingIds, exceptRequest ?? null],
   );
   for (const request of invalidated.rows)
-    await notify(db, request.requester_id, 'בקשת הפגישה בוטלה כי אחת הפגישות השתנתה.');
+    await notify(db, request.requester_id, messages.meetingRequestCanceledAfterMeetingChanged);
   const exchanges = await db.query<{ requester_id: number }>(
     `UPDATE meeting_exchange_requests SET status='invalidated' WHERE status='pending'
      AND (first_meeting_id=ANY($1::int[]) OR second_meeting_id=ANY($1::int[])) RETURNING requester_id`,
     [meetingIds],
   );
   for (const request of exchanges.rows)
-    await notify(db, request.requester_id, 'בקשת השחרור או ההחלפה בוטלה כי אחת הפגישות השתנתה.');
+    await notify(db, request.requester_id, messages.exchangeRequestCanceledAfterMeetingChanged);
 }
 
 // Notify invited employees before deleting rows, because invitations cascade.

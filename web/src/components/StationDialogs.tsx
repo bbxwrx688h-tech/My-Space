@@ -11,7 +11,7 @@ import {
 } from '../layout';
 import { useState } from 'react';
 import { Offer, Workspace } from '../../../shared/model';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { fullDate, now, shortDate } from '../dates';
 import { DateField, ErrorLine, Field, Modal, useAction } from './Fields';
 import { StationFields, stationFrom } from './StationFields';
@@ -39,8 +39,14 @@ export function PublishDialog({
           e.preventDefault();
           const form = new FormData(e.currentTarget);
           void action.run(async () => {
-            if (add) await api('stations', stationFrom(form));
-            else await api('stations/offers', { stationId, start, end, note: form.get('note') });
+            if (add) await endpoints.stations.create(stationFrom(form));
+            else
+              await endpoints.stations.publish({
+                stationId,
+                start,
+                end,
+                note: form.get('note'),
+              });
             await saved();
             if (add && onAdded) onAdded();
             else close();
@@ -212,7 +218,7 @@ export function DaysDialog({
           disabled={!chosen.length || action.busy}
           onClick={() =>
             action.run(async () => {
-              await api('stations/days', { action: mode, offerId: offer.id, days: chosen });
+              await endpoints.stations.days({ action: mode, offerId: offer.id, days: chosen });
               await saved();
               close();
             })

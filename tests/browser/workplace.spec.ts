@@ -395,7 +395,7 @@ test('a boss creates, edits following occurrences, and deletes a recurring serie
   await post(admin, 'auth/admin', { username: 'admin', password: 'local-test-password' });
   const destination = await post(admin, 'admin/rooms', { site: 'MARP', name: 'חדר סדרה' });
   await post(boss, 'auth/dev', { upn: 'uri@example.test' });
-  let state = await (await boss.request.get('/api/workspace')).json();
+  const state = await (await boss.request.get('/api/workspace')).json();
   if (!state.me.site) await post(boss, 'onboarding', { site: 'MID' });
   await post(admin, 'admin/role', { personId: state.me.id, role: 'boss' });
   await dev(page, 'uri');
@@ -417,7 +417,10 @@ test('a boss creates, edits following occurrences, and deletes a recurring serie
   await page.getByRole('button', { name: 'עריכת פגישה' }).click();
   await page.getByLabel('כותרת הפגישה').fill('סדרה מעודכנת');
   await page.getByLabel(/היקף השינוי/).selectOption('following');
-  await page.getByRole('dialog').getByLabel(/חדר ישיבות/).selectOption(String(destination.id));
+  await page
+    .getByRole('dialog')
+    .getByLabel(/חדר ישיבות/)
+    .selectOption(String(destination.id));
   await page.getByLabel('שעת התחלה שעות').selectOption('12');
   await page.getByLabel('שעת התחלה דקות').selectOption('00');
   await page.getByLabel('שעת סיום שעות').selectOption('13');
@@ -428,10 +431,13 @@ test('a boss creates, edits following occurrences, and deletes a recurring serie
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByRole('button', { name: 'ביטול כל הסדרה' }).click();
   await expect(page.getByRole('button', { name: /סדרה מעודכנת/ })).toHaveCount(0);
-  state = await (await boss.request.get('/api/workspace')).json();
-  expect(
-    state.meetings.some((meeting: { title: string }) => meeting.title.includes('סדרה')),
-  ).toBeFalsy();
+  // The UI settles before the cancel request completes; poll the API for the saved state.
+  await expect
+    .poll(async () => {
+      const current = await (await boss.request.get('/api/workspace')).json();
+      return current.meetings.some((meeting: { title: string }) => meeting.title.includes('סדרה'));
+    })
+    .toBe(false);
   await Promise.all([admin.close(), boss.close()]);
 });
 
@@ -451,7 +457,7 @@ test('meeting owners approve a swap and then a release through the requests page
   if (!secondState.me.site) await post(secondOwner, 'onboarding', { site: 'MID' });
   await post(admin, 'admin/role', { personId: firstState.me.id, role: 'boss' });
   await post(admin, 'admin/role', { personId: secondState.me.id, role: 'boss' });
-  const roomId = firstState.rooms[0].id;
+  const roomId = firstState.rooms.find((room: { site: string }) => room.site === 'MID')!.id;
   const meetingInput = (from: string, until: string, title: string) => ({
     change: {
       action: 'create',

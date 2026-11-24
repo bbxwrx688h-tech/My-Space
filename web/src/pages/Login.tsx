@@ -10,7 +10,7 @@ import {
 } from '../layout';
 import { useEffect, useState } from 'react';
 import { KeyRound, LogIn } from 'lucide-react';
-import { api } from '../api';
+import { endpoints } from '../endpoints';
 import { Brand, ErrorLine, Field, useAction } from '../components/Fields';
 
 export function Login({ done }: { done: () => Promise<void> }) {
@@ -19,7 +19,8 @@ export function Login({ done }: { done: () => Promise<void> }) {
   const [loadError, setLoadError] = useState('');
   const action = useAction();
   useEffect(() => {
-    api<{ employees: typeof employees }>('auth/options')
+    endpoints.auth
+      .options()
       .then((v) => setEmployees(v.employees))
       .catch((e) => setLoadError(e.message));
   }, []);
@@ -43,7 +44,7 @@ export function Login({ done }: { done: () => Promise<void> }) {
               disabled={action.busy}
               onClick={() =>
                 action.run(async () => {
-                  await api('auth/adfs', {});
+                  await endpoints.auth.adfs();
                   await done();
                 })
               }
@@ -72,7 +73,8 @@ export function Login({ done }: { done: () => Promise<void> }) {
               e.preventDefault();
               const data = Object.fromEntries(new FormData(e.currentTarget));
               void action.run(async () => {
-                await api('auth/' + mode, data);
+                if (mode === 'admin') await endpoints.auth.admin(data);
+                else await endpoints.auth.dev(data);
                 await done();
               });
             }}

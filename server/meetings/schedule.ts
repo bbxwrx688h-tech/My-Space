@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { MeetingInput, Role } from '../../shared/model';
-import { zone } from '../validation';
+import { zone } from '../../shared/time';
 
 export function interval(
   input: MeetingInput,

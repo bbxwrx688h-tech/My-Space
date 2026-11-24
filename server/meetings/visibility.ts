@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg';
 import { Meeting, Person } from '../../shared/model';
+import { concealPrivateMeeting } from '../common/visibility/privacy';
 
 // Conflict previews must follow the same privacy rules as the calendar.
 export async function visibleConflicts(db: PoolClient, viewer: Person, meetings: Meeting[]) {
@@ -12,8 +13,6 @@ export async function visibleConflicts(db: PoolClient, viewer: Person, meetings:
   );
   const visible = new Set(allowed.rows.map((row) => row.id));
   return meetings.map((meeting) =>
-    meeting.private && !visible.has(meeting.id)
-      ? { ...meeting, title: 'פגישה פרטית', description: '', visit: false }
-      : meeting,
+    meeting.private && !visible.has(meeting.id) ? concealPrivateMeeting(meeting) : meeting,
   );
 }

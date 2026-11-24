@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { Person } from '../../shared/model';
+import { errors } from '../common/errors';
 import { messages } from '../common/notifications/messages';
 import { notify } from '../db/connection';
 import { invalidateMeetingRequests, notifyInvitees } from './changes';
@@ -43,6 +44,17 @@ export async function expireRequests(db: PoolClient) {
     await notify(db, request.requester_id, messages.exchangeRequestExpired);
 }
 
+export async function withScheduleLock<T>(db: PoolClient, action: () => Promise<T>): Promise<T> {
+  await lockSchedule(db);
+  return action();
+}
+
+export async function withRequestExpiry<T>(db: PoolClient, action: () => Promise<T>): Promise<T> {
+  await lockSchedule(db);
+  await expireRequests(db);
+  return action();
+}
+
 export async function assertNoHolds(
   db: PoolClient,
   roomId: number,
@@ -56,7 +68,7 @@ export async function assertNoHolds(
        AND ($4::integer IS NULL OR r.id<>$4) LIMIT 1`,
     [roomId, start, end, except ?? null],
   );
-  if (held.rowCount) throw new ConflictException('החדר שמור לבקשה הממתינה לאישור');
+  if (held.rowCount) throw new ConflictException(errors.roomHeld);
 }
 
 export interface BookingProposal {
@@ -113,7 +125,7 @@ export async function makeBookingRequest(
     if (
       conflicts.some((m) => m.role !== 'manager' && m.role !== 'boss' && m.organizerId !== actor.id)
     )
-      throw new ConflictException('יש לפנות למנהל המערכת בנוגע לפגישה זו');
+      throw new ConflictException(errors.contactAdmin);
   }
   const earliest = proposal.slots.reduce(
     (min, slot) => (slot.start < min ? slot.start : min),
@@ -219,6 +231,8 @@ export async function insertMeetings(db: PoolClient, actorId: number, proposal: 
      SELECT m.id,p.person_id FROM unnest($1::int[]) AS m(id) CROSS JOIN unnest($2::int[]) AS p(person_id)`,
     [ids, proposal.invitees],
   );
+  // Intentional bulk-notice exception: the per-occurrence date is built in SQL,
+  // so this copy must stay in sync with messages.invitedToMeeting.
   await db.query(
     `INSERT INTO notices(person_id,message)
      SELECT p.person_id,'הוזמנת לפגישה ״' || $3::text || '״ בתאריך ' ||
@@ -238,273 +252,281 @@ export async function decideBooking(
   requestId: number,
   approve: boolean,
 ) {
-  await lockSchedule(db);
-  await expireRequests(db);
-  const request = (
-    await db.query('SELECT * FROM meeting_requests WHERE id=$1 FOR UPDATE', [requestId])
-  ).rows[0];
-  if (!request) throw new NotFoundException('הבקשה לא נמצאה');
-  if (request.status !== 'pending') throw new ConflictException('הבקשה כבר אינה ממתינה לאישור');
-  const permission = await db.query(
-    'SELECT 1 FROM meeting_request_approvals WHERE request_id=$1 AND person_id=$2',
-    [requestId, actor.id],
-  );
-  if (actor.role !== 'admin' && (actor.role !== 'boss' || !permission.rowCount))
-    throw new ForbiddenException('אין הרשאה לאשר בקשה זו');
-  if (!approve) {
-    await db.query("UPDATE meeting_requests SET status='rejected' WHERE id=$1", [requestId]);
-    await notify(db, request.requester_id, messages.meetingRequestRejected);
-    return { status: 'rejected' };
-  }
-  // A boss approves only their own row. The admin may approve every row.
-  if (actor.role === 'admin')
-    await db.query('UPDATE meeting_request_approvals SET approved=true WHERE request_id=$1', [
-      requestId,
-    ]);
-  else
-    await db.query(
-      'UPDATE meeting_request_approvals SET approved=true WHERE request_id=$1 AND person_id=$2',
+  return withRequestExpiry(db, async () => {
+    const request = (
+      await db.query('SELECT * FROM meeting_requests WHERE id=$1 FOR UPDATE', [requestId])
+    ).rows[0];
+    if (!request) throw new NotFoundException(errors.requestNotFound);
+    if (request.status !== 'pending') throw new ConflictException(errors.requestNotPending);
+    const permission = await db.query(
+      'SELECT 1 FROM meeting_request_approvals WHERE request_id=$1 AND person_id=$2',
       [requestId, actor.id],
     );
-  const remaining = await db.query(
-    'SELECT 1 FROM meeting_request_approvals WHERE request_id=$1 AND NOT approved LIMIT 1',
-    [requestId],
-  );
-  if (remaining.rowCount) return { status: 'pending' };
-
-  // A role or supervisor may have changed while the request was pending.
-  const requester = (
-    await db.query('SELECT id,role,supervisor_id FROM people WHERE id=$1', [request.requester_id])
-  ).rows[0];
-  const approvals = (
-    await db.query('SELECT person_id FROM meeting_request_approvals WHERE request_id=$1', [
-      requestId,
-    ])
-  ).rows;
-  if (
-    ((request.kind === 'booking' || request.kind === 'edit') &&
-      (requester.role !== 'manager' ||
-        (requester.supervisor_id === null
-          ? actor.role !== 'admin' || approvals.length !== 0
-          : approvals.length !== 1 || approvals[0].person_id !== requester.supervisor_id))) ||
-    ((request.kind === 'takeover' ||
-      request.kind === 'boss_edit' ||
-      request.kind === 'series_edit') &&
-      requester.role !== 'boss')
-  ) {
-    await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-    await notify(db, request.requester_id, messages.meetingRequestCanceledAfterRoleChange);
-    return { status: 'invalidated' };
-  }
-  const slots = (
-    await db.query(
-      'SELECT room_id,starts,ends,target_meeting_id,target_version,target_organizer_id FROM meeting_request_slots WHERE request_id=$1 ORDER BY starts',
+    if (actor.role !== 'admin' && (actor.role !== 'boss' || !permission.rowCount))
+      throw new ForbiddenException('אין הרשאה לאשר בקשה זו');
+    if (!approve) {
+      await db.query("UPDATE meeting_requests SET status='rejected' WHERE id=$1", [requestId]);
+      await notify(db, request.requester_id, messages.meetingRequestRejected);
+      return { status: 'rejected' };
+    }
+    // A boss approves only their own row. The admin may approve every row.
+    if (actor.role === 'admin')
+      await db.query('UPDATE meeting_request_approvals SET approved=true WHERE request_id=$1', [
+        requestId,
+      ]);
+    else
+      await db.query(
+        'UPDATE meeting_request_approvals SET approved=true WHERE request_id=$1 AND person_id=$2',
+        [requestId, actor.id],
+      );
+    const remaining = await db.query(
+      'SELECT 1 FROM meeting_request_approvals WHERE request_id=$1 AND NOT approved LIMIT 1',
       [requestId],
-    )
-  ).rows;
-  const snapshots = (
-    await db.query('SELECT * FROM meeting_request_conflicts WHERE request_id=$1', [requestId])
-  ).rows;
-  if (request.kind === 'edit') {
-    const target = await db.query('SELECT version,organizer_id,ends FROM meetings WHERE id=$1', [
-      request.target_meeting_id,
-    ]);
+    );
+    if (remaining.rowCount) return { status: 'pending' };
+
+    // A role or supervisor may have changed while the request was pending.
+    const requester = (
+      await db.query('SELECT id,role,supervisor_id FROM people WHERE id=$1', [request.requester_id])
+    ).rows[0];
+    const approvals = (
+      await db.query('SELECT person_id FROM meeting_request_approvals WHERE request_id=$1', [
+        requestId,
+      ])
+    ).rows;
     if (
-      !target.rowCount ||
-      target.rows[0].version !== request.target_version ||
-      target.rows[0].organizer_id !== request.requester_id ||
-      new Date(target.rows[0].ends).getTime() <= Date.now()
+      ((request.kind === 'booking' || request.kind === 'edit') &&
+        (requester.role !== 'manager' ||
+          (requester.supervisor_id === null
+            ? actor.role !== 'admin' || approvals.length !== 0
+            : approvals.length !== 1 || approvals[0].person_id !== requester.supervisor_id))) ||
+      ((request.kind === 'takeover' ||
+        request.kind === 'boss_edit' ||
+        request.kind === 'series_edit') &&
+        requester.role !== 'boss')
     ) {
       await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-      await notify(
-        db,
-        request.requester_id,
-        messages.meetingChangeRequestCanceledAfterOriginalChanged,
-      );
+      await notify(db, request.requester_id, messages.meetingRequestCanceledAfterRoleChange);
       return { status: 'invalidated' };
     }
-  }
-  if (request.kind === 'series_edit' || request.kind === 'boss_edit') {
-    for (const slot of slots) {
-      const target = await db.query(
-        'SELECT m.version,m.organizer_id,m.ends,p.role,p.supervisor_id FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
-        [slot.target_meeting_id],
-      );
+    const slots = (
+      await db.query(
+        'SELECT room_id,starts,ends,target_meeting_id,target_version,target_organizer_id FROM meeting_request_slots WHERE request_id=$1 ORDER BY starts',
+        [requestId],
+      )
+    ).rows;
+    const snapshots = (
+      await db.query('SELECT * FROM meeting_request_conflicts WHERE request_id=$1', [requestId])
+    ).rows;
+    if (request.kind === 'edit') {
+      const target = await db.query('SELECT version,organizer_id,ends FROM meetings WHERE id=$1', [
+        request.target_meeting_id,
+      ]);
       if (
         !target.rowCount ||
-        target.rows[0].version !== slot.target_version ||
-        target.rows[0].organizer_id !== slot.target_organizer_id ||
-        new Date(target.rows[0].ends).getTime() <= Date.now() ||
-        (target.rows[0].organizer_id !== request.requester_id &&
-          !(
-            target.rows[0].role === 'manager' &&
-            target.rows[0].supervisor_id === request.requester_id
-          ))
+        target.rows[0].version !== request.target_version ||
+        target.rows[0].organizer_id !== request.requester_id ||
+        new Date(target.rows[0].ends).getTime() <= Date.now()
       ) {
         await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
         await notify(
           db,
           request.requester_id,
-          messages.meetingChangeRequestCanceledAfterMeetingChanged,
+          messages.meetingChangeRequestCanceledAfterOriginalChanged,
         );
         return { status: 'invalidated' };
       }
     }
-  }
-  const targetIds = slots.map((slot) => slot.target_meeting_id).filter(Boolean);
-  if (request.target_meeting_id) targetIds.push(request.target_meeting_id);
-  // Every overlap must still match the exact meeting version that was reviewed.
-  for (const slot of slots) {
-    await assertNoHolds(
-      db,
-      slot.room_id,
-      slot.starts.toISOString(),
-      slot.ends.toISOString(),
-      requestId,
-    );
-    const overlaps = (
-      await db.query(
-        'SELECT m.id,m.version,m.organizer_id FROM meetings m WHERE m.room_id=$1 AND m.starts<$3 AND m.ends>$2 AND m.id<>ALL($4::int[])',
-        [slot.room_id, slot.starts, slot.ends, targetIds],
-      )
-    ).rows;
-    for (const overlap of overlaps) {
-      if (
-        !snapshots.some(
-          (old) =>
-            old.meeting_id === overlap.id &&
-            old.version === overlap.version &&
-            old.organizer_id === overlap.organizer_id,
+    if (request.kind === 'series_edit' || request.kind === 'boss_edit') {
+      for (const slot of slots) {
+        const target = await db.query(
+          'SELECT m.version,m.organizer_id,m.ends,p.role,p.supervisor_id FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
+          [slot.target_meeting_id],
+        );
+        if (
+          !target.rowCount ||
+          target.rows[0].version !== slot.target_version ||
+          target.rows[0].organizer_id !== slot.target_organizer_id ||
+          new Date(target.rows[0].ends).getTime() <= Date.now() ||
+          (target.rows[0].organizer_id !== request.requester_id &&
+            !(
+              target.rows[0].role === 'manager' &&
+              target.rows[0].supervisor_id === request.requester_id
+            ))
+        ) {
+          await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [
+            requestId,
+          ]);
+          await notify(
+            db,
+            request.requester_id,
+            messages.meetingChangeRequestCanceledAfterMeetingChanged,
+          );
+          return { status: 'invalidated' };
+        }
+      }
+    }
+    const targetIds = slots.map((slot) => slot.target_meeting_id).filter(Boolean);
+    if (request.target_meeting_id) targetIds.push(request.target_meeting_id);
+    // Every overlap must still match the exact meeting version that was reviewed.
+    for (const slot of slots) {
+      await assertNoHolds(
+        db,
+        slot.room_id,
+        slot.starts.toISOString(),
+        slot.ends.toISOString(),
+        requestId,
+      );
+      const overlaps = (
+        await db.query(
+          'SELECT m.id,m.version,m.organizer_id FROM meetings m WHERE m.room_id=$1 AND m.starts<$3 AND m.ends>$2 AND m.id<>ALL($4::int[])',
+          [slot.room_id, slot.starts, slot.ends, targetIds],
         )
+      ).rows;
+      for (const overlap of overlaps) {
+        if (
+          !snapshots.some(
+            (old) =>
+              old.meeting_id === overlap.id &&
+              old.version === overlap.version &&
+              old.organizer_id === overlap.organizer_id,
+          )
+        ) {
+          await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [
+            requestId,
+          ]);
+          await notify(
+            db,
+            request.requester_id,
+            messages.meetingRequestCanceledAfterScheduleChanged,
+          );
+          return { status: 'invalidated' };
+        }
+      }
+    }
+    for (const snapshot of snapshots) {
+      const current = await db.query(
+        'SELECT m.version,m.organizer_id,p.role FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
+        [snapshot.meeting_id],
+      );
+      if (
+        !current.rowCount ||
+        current.rows[0].version !== snapshot.version ||
+        current.rows[0].organizer_id !== snapshot.organizer_id ||
+        current.rows[0].role !== snapshot.organizer_role
       ) {
         await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-        await notify(db, request.requester_id, messages.meetingRequestCanceledAfterScheduleChanged);
+        await notify(db, request.requester_id, messages.meetingRequestCanceledAfterMeetingChanged);
         return { status: 'invalidated' };
       }
     }
-  }
-  for (const snapshot of snapshots) {
-    const current = await db.query(
-      'SELECT m.version,m.organizer_id,p.role FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
-      [snapshot.meeting_id],
-    );
-    if (
-      !current.rowCount ||
-      current.rows[0].version !== snapshot.version ||
-      current.rows[0].organizer_id !== snapshot.organizer_id ||
-      current.rows[0].role !== snapshot.organizer_role
-    ) {
-      await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
-      await notify(db, request.requester_id, messages.meetingRequestCanceledAfterMeetingChanged);
-      return { status: 'invalidated' };
-    }
-  }
-  // Cancellations, replacement meetings, invitations and notices share a commit.
-  for (const snapshot of snapshots) {
-    await notifyInvitees(
-      db,
-      snapshot.meeting_id,
-      messages.meetingInvitationCanceled,
-      request.requester_id,
-    );
-    await db.query('DELETE FROM meetings WHERE id=$1', [snapshot.meeting_id]);
-    if (snapshot.organizer_id !== request.requester_id)
-      await notify(db, snapshot.organizer_id, messages.meetingCanceledAfterApproval);
-  }
-  await invalidateMeetingRequests(
-    db,
-    snapshots.map((snapshot) => snapshot.meeting_id),
-    requestId,
-  );
-  const invitees = (
-    await db.query('SELECT person_id FROM meeting_request_invitees WHERE request_id=$1', [
-      requestId,
-    ])
-  ).rows.map((row) => row.person_id);
-  if (request.kind === 'series_edit' || request.kind === 'boss_edit') {
-    for (const slot of slots) {
+    // Cancellations, replacement meetings, invitations and notices share a commit.
+    for (const snapshot of snapshots) {
       await notifyInvitees(
         db,
-        slot.target_meeting_id,
+        snapshot.meeting_id,
+        messages.meetingInvitationCanceled,
+        request.requester_id,
+      );
+      await db.query('DELETE FROM meetings WHERE id=$1', [snapshot.meeting_id]);
+      if (snapshot.organizer_id !== request.requester_id)
+        await notify(db, snapshot.organizer_id, messages.meetingCanceledAfterApproval);
+    }
+    await invalidateMeetingRequests(
+      db,
+      snapshots.map((snapshot) => snapshot.meeting_id),
+      requestId,
+    );
+    const invitees = (
+      await db.query('SELECT person_id FROM meeting_request_invitees WHERE request_id=$1', [
+        requestId,
+      ])
+    ).rows.map((row) => row.person_id);
+    if (request.kind === 'series_edit' || request.kind === 'boss_edit') {
+      for (const slot of slots) {
+        await notifyInvitees(
+          db,
+          slot.target_meeting_id,
+          messages.meetingInvitationDetailsUpdated,
+          request.requester_id,
+        );
+        await db.query(
+          'DELETE FROM meeting_invitations WHERE meeting_id=$1 AND person_id<>ALL($2::int[])',
+          [slot.target_meeting_id, invitees],
+        );
+        for (const invitee of invitees) {
+          if (invitee === slot.target_organizer_id) continue;
+          const added = await db.query(
+            'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
+            [slot.target_meeting_id, invitee],
+          );
+          if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
+        }
+        await db.query(
+          'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
+          [
+            slot.target_meeting_id,
+            request.title,
+            request.description,
+            slot.starts,
+            slot.ends,
+            slot.room_id,
+            request.private,
+            request.visit,
+          ],
+        );
+        if (slot.target_organizer_id !== request.requester_id)
+          await notify(db, slot.target_organizer_id, messages.meetingUpdatedAfterRequestApproval);
+      }
+      await invalidateMeetingRequests(db, targetIds, requestId);
+    } else if (request.kind === 'edit') {
+      await notifyInvitees(
+        db,
+        request.target_meeting_id,
         messages.meetingInvitationDetailsUpdated,
         request.requester_id,
       );
       await db.query(
         'DELETE FROM meeting_invitations WHERE meeting_id=$1 AND person_id<>ALL($2::int[])',
-        [slot.target_meeting_id, invitees],
+        [request.target_meeting_id, invitees],
       );
       for (const invitee of invitees) {
-        if (invitee === slot.target_organizer_id) continue;
         const added = await db.query(
           'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
-          [slot.target_meeting_id, invitee],
+          [request.target_meeting_id, invitee],
         );
         if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
       }
       await db.query(
         'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
         [
-          slot.target_meeting_id,
+          request.target_meeting_id,
           request.title,
           request.description,
-          slot.starts,
-          slot.ends,
-          slot.room_id,
+          slots[0].starts,
+          slots[0].ends,
+          slots[0].room_id,
           request.private,
           request.visit,
         ],
       );
-      if (slot.target_organizer_id !== request.requester_id)
-        await notify(db, slot.target_organizer_id, messages.meetingUpdatedAfterRequestApproval);
-    }
-    await invalidateMeetingRequests(db, targetIds, requestId);
-  } else if (request.kind === 'edit') {
-    await notifyInvitees(
-      db,
-      request.target_meeting_id,
-      messages.meetingInvitationDetailsUpdated,
-      request.requester_id,
-    );
-    await db.query(
-      'DELETE FROM meeting_invitations WHERE meeting_id=$1 AND person_id<>ALL($2::int[])',
-      [request.target_meeting_id, invitees],
-    );
-    for (const invitee of invitees) {
-      const added = await db.query(
-        'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
-        [request.target_meeting_id, invitee],
-      );
-      if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
-    }
-    await db.query(
-      'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
-      [
-        request.target_meeting_id,
-        request.title,
-        request.description,
-        slots[0].starts,
-        slots[0].ends,
-        slots[0].room_id,
-        request.private,
-        request.visit,
-      ],
-    );
-    await invalidateMeetingRequests(db, [request.target_meeting_id], requestId);
-  } else
-    await insertMeetings(db, request.requester_id, {
-      roomId: slots[0].room_id,
-      title: request.title,
-      description: request.description,
-      private: request.private,
-      visit: request.visit,
-      recurring: request.recurring,
-      invitees,
-      slots: slots.map((slot) => ({
-        start: slot.starts.toISOString(),
-        end: slot.ends.toISOString(),
-      })),
-    });
-  await db.query("UPDATE meeting_requests SET status='approved' WHERE id=$1", [requestId]);
-  await notify(db, request.requester_id, messages.meetingRequestApproved);
-  return { status: 'approved' };
+      await invalidateMeetingRequests(db, [request.target_meeting_id], requestId);
+    } else
+      await insertMeetings(db, request.requester_id, {
+        roomId: slots[0].room_id,
+        title: request.title,
+        description: request.description,
+        private: request.private,
+        visit: request.visit,
+        recurring: request.recurring,
+        invitees,
+        slots: slots.map((slot) => ({
+          start: slot.starts.toISOString(),
+          end: slot.ends.toISOString(),
+        })),
+      });
+    await db.query("UPDATE meeting_requests SET status='approved' WHERE id=$1", [requestId]);
+    await notify(db, request.requester_id, messages.meetingRequestApproved);
+    return { status: 'approved' };
+  });
 }

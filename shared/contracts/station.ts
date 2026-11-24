@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stationDayActions } from '../model';
 import { date, id, selectedDays } from './common';
 
 export const publishOfferBody = z.object({
@@ -9,7 +10,7 @@ export const publishOfferBody = z.object({
 });
 
 export const changeDaysBody = z.object({
-  action: z.enum(['book', 'release', 'withdraw']),
+  action: z.enum(stationDayActions),
   offerId: id,
   days: selectedDays,
 });

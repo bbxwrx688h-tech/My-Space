@@ -18,6 +18,7 @@ import {
   seriesCancelBody,
 } from '../../../shared/contracts/meeting';
 import { Employee, SessionGuard } from '../../auth/session';
+import { errors } from '../../common/errors';
 import { parse } from '../../common/validation/parse';
 import { MeetingActionService } from './meeting-action.service';
 import { MeetingRepository } from './meeting.repository';
@@ -51,7 +52,7 @@ export class MeetingActionsController {
   @Get('attendees') async attendees(@Employee() me: Person, @Query() query: unknown) {
     const input = parse(attendeeQuery, query);
     const meeting = await this.repository.findAttendeeContext(input.meeting, me.id);
-    if (!meeting) throw new NotFoundException('הפגישה לא נמצאה');
+    if (!meeting) throw new NotFoundException(errors.meetingNotFound);
     if (
       meeting.private &&
       meeting.organizer_id !== me.id &&

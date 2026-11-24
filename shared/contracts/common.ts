@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { sites } from '../model';
+import { sites, stationOs } from '../model';
 import { local } from '../time';
 
 export { today, zone } from '../time';
 
 export const site = z.enum(sites);
+export const os = z.enum(stationOs);
 export const id = z.number().int().positive();
 export const shortText = z.string().trim().min(1).max(150);
 export const description = z.string().trim().min(1).max(2000);
@@ -18,7 +19,7 @@ export const endTime = z.union([time, z.literal('24:00')]);
 export const stationFields = z.object({
   site,
   room: shortText,
-  os: z.enum(['Windows', 'Linux']),
+  os,
   description,
 });
 
@@ -28,6 +29,8 @@ export const selectedDays = z
   .refine((days) => new Set(days).size === days.length);
 
 export const inviteesField = z.array(id).refine((items) => new Set(items).size === items.length);
+
+export type StationFieldsInput = z.infer<typeof stationFields>;
 
 /** Hebrew field names used in validation errors, shared by API and UI. */
 export const fieldLabels: Record<string, string> = {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assignableRoles } from '../model';
 import { id, shortText, site, stationFields } from './common';
 
 export const onboardingBody = z.object({
@@ -16,7 +17,7 @@ export const roomBody = z.object({ site, name: shortText });
 
 export const roleBody = z.object({
   personId: id,
-  role: z.enum(['user', 'manager', 'boss']),
+  role: z.enum(assignableRoles),
 });
 
 export const supervisorBody = z.object({
@@ -25,6 +26,8 @@ export const supervisorBody = z.object({
 });
 
 export type OnboardingInput = z.infer<typeof onboardingBody>;
+export type NoticeReadInput = z.infer<typeof noticeReadBody>;
+export type PeopleSearchInput = z.infer<typeof peopleSearchQuery>;
 export type RoomInput = z.infer<typeof roomBody>;
 export type RoleInput = z.infer<typeof roleBody>;
 export type SupervisorInput = z.infer<typeof supervisorBody>;

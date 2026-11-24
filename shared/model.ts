@@ -1,6 +1,45 @@
 export const sites = ['MBT', 'MID', 'MARP'] as const;
 export type Site = (typeof sites)[number];
-export type Role = 'user' | 'manager' | 'boss' | 'admin';
+
+export const roles = ['user', 'manager', 'boss', 'admin'] as const;
+export type Role = (typeof roles)[number];
+
+// Admins are assigned outside the role editor.
+export const assignableRoles = ['user', 'manager', 'boss'] as const;
+export type AssignableRole = (typeof assignableRoles)[number];
+
+export const stationOs = ['Windows', 'Linux'] as const;
+export type StationOs = (typeof stationOs)[number];
+
+export const offerDayStatuses = ['available', 'mine', 'occupied'] as const;
+export type OfferDayStatus = (typeof offerDayStatuses)[number];
+
+export const attendeeStatuses = ['pending', 'accepted', 'declined'] as const;
+export type AttendeeStatus = (typeof attendeeStatuses)[number];
+
+export const meetingRequestKinds = [
+  'booking',
+  'takeover',
+  'edit',
+  'boss_edit',
+  'series_edit',
+] as const;
+export type MeetingRequestKind = (typeof meetingRequestKinds)[number];
+
+export const exchangeKinds = ['release', 'swap'] as const;
+export type ExchangeKind = (typeof exchangeKinds)[number];
+
+export const meetingActions = ['create', 'edit', 'cancel'] as const;
+export type MeetingAction = (typeof meetingActions)[number];
+
+export const meetingScopes = ['single', 'following'] as const;
+export type MeetingScope = (typeof meetingScopes)[number];
+
+export const recurrenceFrequencies = ['daily', 'weekly'] as const;
+export type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
+
+export const stationDayActions = ['book', 'release', 'withdraw'] as const;
+export type StationDayAction = (typeof stationDayActions)[number];
 
 export interface Person {
   id: number;
@@ -23,12 +62,12 @@ export interface Station {
   owner: string;
   site: Site;
   room: string;
-  os: 'Windows' | 'Linux';
+  os: StationOs;
   description: string;
 }
 export interface OfferDay {
   date: string;
-  status: 'available' | 'mine' | 'occupied';
+  status: OfferDayStatus;
 }
 export interface Offer {
   id: number;
@@ -60,11 +99,11 @@ export interface DirectoryPerson {
   upn: string;
 }
 export interface Attendee extends DirectoryPerson {
-  status: 'pending' | 'accepted' | 'declined';
+  status: AttendeeStatus;
 }
 export interface MeetingRequest {
   id: number;
-  kind: 'booking' | 'takeover' | 'edit' | 'boss_edit' | 'series_edit';
+  kind: MeetingRequestKind;
   requesterId: number;
   requester: string;
   title: string;
@@ -94,7 +133,7 @@ export interface MeetingRequest {
 }
 export interface ExchangeRequest {
   id: number;
-  kind: 'release' | 'swap';
+  kind: ExchangeKind;
   requesterId: number;
   requester: string;
   title: string;

@@ -45,7 +45,7 @@ export function PublishDialog({
                 stationId,
                 start,
                 end,
-                note: form.get('note'),
+                note: String(form.get('note') ?? ''),
               });
             await saved();
             if (add && onAdded) onAdded();

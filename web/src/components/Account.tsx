@@ -2,6 +2,7 @@ import { Box, Button, Popover, Typography } from '@mui/material';
 import { stackSx, buttonSx } from '../layout';
 import { Person } from '../../../shared/model';
 import { ErrorLine, useAction } from './Fields';
+import { roleLabels } from '../options';
 
 export function Account({
   me,
@@ -28,12 +29,7 @@ export function Account({
           {me.name} {me.surname}
         </strong>
         <Typography>
-          <bdi>{me.upn}</bdi> · {me.site} ·{' '}
-          {
-            { user: 'עובד/ת', manager: 'מנהל/ת', boss: 'מנהל/ת בכיר/ה', admin: 'מנהל מערכת' }[
-              me.role
-            ]
-          }
+          <bdi>{me.upn}</bdi> · {me.site} · {roleLabels[me.role]}
         </Typography>
         {me.role === 'admin' && (
           <Button sx={buttonSx} href="#users" onClick={close}>

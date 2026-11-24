@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { Attendee, DirectoryPerson, Meeting, Review, Workspace } from '@shared/model';
 import { ApiError } from '@app/api';
 import { endpoints } from '@app/endpoints';
-import { clock, local, now, nextMeetingSlot } from '@app/dates';
+import { clock, local, now, nextMeetingSlot, slots } from '@app/dates';
 import { useAction } from '@app/components/Fields';
 import { useHashRoute } from '@app/app/useHashRoute';
-import { slots } from './MeetingTimeField';
+import type { MeetingCommandInput } from '@shared/contracts/meeting';
 import type { MeetingDetailsProps } from './MeetingDetails';
 import type { MeetingFormProps } from './MeetingForm';
 import type { MeetingReviewProps } from './MeetingReview';
 
-type Change = Record<string, unknown>;
+type Change = MeetingCommandInput;
 
 export interface UseMeetingDialogProps {
   data: Workspace;
@@ -114,13 +114,11 @@ export function useMeetingDialog({
   }, [pending]);
   async function submit(change: Change, token?: string) {
     await action.run(async () => {
+      const submittedDate = 'date' in change ? change.date : undefined;
       try {
         const result = await endpoints.meetings.change(change, token);
         if (result.pending) {
-          await saved(
-            typeof change.date === 'string' ? change.date : undefined,
-            typeof change.roomId === 'number' ? change.roomId : undefined,
-          );
+          await saved(submittedDate, change.roomId);
           close();
           navigate('requests');
           return;
@@ -133,14 +131,10 @@ export function useMeetingDialog({
         }
         throw e;
       }
-      await saved(
-        typeof change.date === 'string' ? change.date : undefined,
-        typeof change.roomId === 'number' ? change.roomId : undefined,
-      );
+      await saved(submittedDate, change.roomId);
       close();
     });
   }
-  const target = meeting ? { meetingId: meeting.id, version: meeting.version } : {};
   const modalTitle = pending
     ? 'אישור שינוי בפגישות'
     : editing
@@ -218,10 +212,8 @@ export function useMeetingDialog({
       onStartChange: changeFrom,
     },
     onSubmit: () => {
-      void submit({
-        action: meeting ? 'edit' : 'create',
+      const fields = {
         roomId: selectedRoomId,
-        ...target,
         date,
         from,
         until,
@@ -230,16 +222,28 @@ export function useMeetingDialog({
         private: isPrivate,
         visit,
         invitees: invitees.map((person) => person.id),
-        ...(meeting ? { scope: editScope } : {}),
-        ...(!meeting && recurrence !== 'none'
-          ? {
-              recurrence: {
-                frequency: recurrence,
-                ...(recurrenceEnd === 'count' ? { count } : { endDate }),
-              },
-            }
-          : {}),
-      });
+      };
+      if (meeting)
+        void submit({
+          action: 'edit',
+          ...fields,
+          meetingId: meeting.id,
+          version: meeting.version,
+          scope: editScope,
+        });
+      else
+        void submit({
+          action: 'create',
+          ...fields,
+          ...(recurrence !== 'none'
+            ? {
+                recurrence: {
+                  frequency: recurrence,
+                  ...(recurrenceEnd === 'count' ? { count } : { endDate }),
+                },
+              }
+            : {}),
+        });
     },
   };
 
@@ -260,7 +264,12 @@ export function useMeetingDialog({
         onEdit: () => setEditing(true),
         onCancel: () => {
           if (meeting.organizerId !== data.me.id || window.confirm('לבטל את הפגישה?'))
-            void submit({ action: 'cancel', roomId, ...target });
+            void submit({
+              action: 'cancel',
+              roomId,
+              meetingId: meeting.id,
+              version: meeting.version,
+            });
         },
         onCancelFollowing: () => {
           const seriesId = meeting.seriesId;

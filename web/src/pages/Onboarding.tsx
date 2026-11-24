@@ -13,9 +13,10 @@ import { Person, Site } from '../../../shared/model';
 import { endpoints } from '../endpoints';
 import { Brand, ErrorLine, useAction } from '../components/Fields';
 import { SiteSelect, StationFields, stationFrom } from '../components/StationFields';
+import { defaultSite } from '../options';
 
 export function Onboarding({ me, done }: { me: Person; done: () => Promise<void> }) {
-  const [site, setSite] = useState<Site>('MID');
+  const [site, setSite] = useState<Site>(defaultSite);
   const [owns, setOwns] = useState<boolean | null>(null);
   const action = useAction();
   return (

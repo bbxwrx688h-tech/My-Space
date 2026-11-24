@@ -1,11 +1,7 @@
 import { Box, NativeSelect, Typography } from '@mui/material';
 import { selectSx } from '@app/layout';
+import { slotMinuteOptions, slots } from '@app/dates';
 
-export const slots = Array.from(
-  { length: 96 },
-  (_, i) =>
-    String(Math.floor(i / 4)).padStart(2, '0') + ':' + String((i % 4) * 15).padStart(2, '0'),
-);
 export function TimeField({
   label,
   value,
@@ -57,7 +53,7 @@ export function TimeField({
           value={minute}
           onChange={(event) => onChange(hour + ':' + event.target.value)}
         >
-          {['00', '15', '30', '45'].map((m) => (
+          {slotMinuteOptions.map((m) => (
             <option key={m} value={m} disabled={!allowed.includes(hour + ':' + m)}>
               {m}
             </option>

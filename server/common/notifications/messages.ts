@@ -3,6 +3,12 @@ export const messages = {
   meetingRequestExpired: 'בקשת הפגישה פגה ותפיסת החדר שוחררה.',
   meetingChangeRequestInvalidated: 'בקשת שינוי הפגישה בוטלה כי הפגישה המקורית הסתיימה או השתנתה.',
   exchangeRequestExpired: 'בקשת השחרור או ההחלפה פגה.',
+  meetingRequestCanceledAfterRoleChangeNotice: 'בקשת הפגישה בוטלה עקב שינוי בתפקיד.',
+  exchangeRequestCanceledAfterRoleChange: 'בקשת השחרור או ההחלפה בוטלה עקב שינוי בתפקיד.',
+  meetingSeriesRequestCanceledAfterSupervisorChange: 'בקשת שינוי הסדרה בוטלה עקב שינוי הממונה.',
+  meetingRequestForwardedToNewSupervisor: 'בקשת פגישה הועברה לממונה אחר.',
+  meetingRequestApprovalAssignedToSupervisor: 'הועברה אליך בקשת פגישה לאישור.',
+  meetingRequestSupervisorUpdated: 'הממונה על בקשת הפגישה עודכן.',
   meetingRequestSubmitted: (requesterName: string, requesterSurname: string) =>
     `${requesterName} ${requesterSurname} שלח/ה בקשה להזמנת חדר ישיבות.`,
   meetingRequestRejected: 'בקשת הפגישה נדחתה ותפיסת החדר שוחררה.',

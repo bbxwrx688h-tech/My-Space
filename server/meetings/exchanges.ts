@@ -6,12 +6,13 @@ import {
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { Person } from '../../shared/model';
+import { errors } from '../common/errors';
 import { messages } from '../common/notifications/messages';
 import { notify } from '../db/connection';
 import { zone } from '../../shared/time';
 import { DateTime } from 'luxon';
 import { invalidateMeetingRequests, notifyInvitees } from './changes';
-import { assertNoHolds, expireRequests, lockSchedule } from './requests';
+import { assertNoHolds, withRequestExpiry } from './requests';
 
 type ExchangeMeeting = {
   id: number;
@@ -27,7 +28,7 @@ async function readMeeting(db: PoolClient, id: number): Promise<ExchangeMeeting>
     'SELECT m.id,m.room_id,m.starts,m.ends,m.organizer_id,m.version,p.role FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1 FOR UPDATE OF m',
     [id],
   );
-  if (!result.rowCount) throw new NotFoundException('הפגישה לא נמצאה');
+  if (!result.rowCount) throw new NotFoundException(errors.meetingNotFound);
   return result.rows[0];
 }
 
@@ -39,59 +40,59 @@ export async function createExchange(
   firstId: number,
   secondId?: number,
 ) {
-  await lockSchedule(db);
-  await expireRequests(db);
-  const role = (await db.query('SELECT role FROM people WHERE id=$1', [actor.id])).rows[0]?.role;
-  if (role === 'user') throw new ForbiddenException('אין הרשאה לבקש חדר ישיבות');
-  if (kind === 'swap' && (!secondId || firstId === secondId))
-    throw new BadRequestException('יש לבחור שתי פגישות שונות');
-  if (kind === 'release' && secondId) throw new BadRequestException('בקשת שחרור כוללת פגישה אחת');
-  const first = await readMeeting(db, firstId);
-  const second = kind === 'swap' ? await readMeeting(db, secondId!) : undefined;
-  if (first.starts.getTime() <= Date.now() || (second && second.starts.getTime() <= Date.now()))
-    throw new BadRequestException('ניתן לבקש רק פגישות שטרם התחילו');
-  if (kind === 'release' && first.organizer_id === actor.id)
-    throw new BadRequestException('אפשר לבטל את הפגישה שלך ישירות');
-  if (second && role !== 'admin' && (first.role === 'user' || second.role === 'user'))
-    throw new BadRequestException('לא ניתן להעביר פגישה של עובד שאינו רשאי להזמין חדר');
-  const expiry = Math.min(
-    Date.now() + 4 * 86400000,
-    first.starts.getTime(),
-    second?.starts.getTime() ?? Infinity,
-  );
-  const result = await db.query(
-    `INSERT INTO meeting_exchange_requests(kind,requester_id,first_meeting_id,first_version,first_owner_id,
-      second_meeting_id,second_version,second_owner_id,expires) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-    [
-      kind,
-      actor.id,
-      first.id,
-      first.version,
-      first.organizer_id,
-      second?.id ?? null,
-      second?.version ?? null,
-      second?.organizer_id ?? null,
-      new Date(expiry),
-    ],
-  );
-  const requestId = result.rows[0].id as number;
-  const owners = [...new Set([first.organizer_id, ...(second ? [second.organizer_id] : [])])];
-  for (const owner of owners) {
-    const ownApproval = kind === 'swap' && owner === actor.id;
-    await db.query(
-      'INSERT INTO meeting_exchange_approvals(request_id,person_id,approved) VALUES ($1,$2,$3)',
-      [requestId, owner, ownApproval],
+  return withRequestExpiry(db, async () => {
+    const role = (await db.query('SELECT role FROM people WHERE id=$1', [actor.id])).rows[0]?.role;
+    if (role === 'user') throw new ForbiddenException('אין הרשאה לבקש חדר ישיבות');
+    if (kind === 'swap' && (!secondId || firstId === secondId))
+      throw new BadRequestException('יש לבחור שתי פגישות שונות');
+    if (kind === 'release' && secondId) throw new BadRequestException('בקשת שחרור כוללת פגישה אחת');
+    const first = await readMeeting(db, firstId);
+    const second = kind === 'swap' ? await readMeeting(db, secondId!) : undefined;
+    if (first.starts.getTime() <= Date.now() || (second && second.starts.getTime() <= Date.now()))
+      throw new BadRequestException('ניתן לבקש רק פגישות שטרם התחילו');
+    if (kind === 'release' && first.organizer_id === actor.id)
+      throw new BadRequestException('אפשר לבטל את הפגישה שלך ישירות');
+    if (second && role !== 'admin' && (first.role === 'user' || second.role === 'user'))
+      throw new BadRequestException('לא ניתן להעביר פגישה של עובד שאינו רשאי להזמין חדר');
+    const expiry = Math.min(
+      Date.now() + 4 * 86400000,
+      first.starts.getTime(),
+      second?.starts.getTime() ?? Infinity,
     );
-    if (!ownApproval)
-      await notify(
-        db,
-        owner,
-        kind === 'release' ? messages.roomReleaseRequested : messages.meetingSwapRequested,
+    const result = await db.query(
+      `INSERT INTO meeting_exchange_requests(kind,requester_id,first_meeting_id,first_version,first_owner_id,
+      second_meeting_id,second_version,second_owner_id,expires) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [
+        kind,
+        actor.id,
+        first.id,
+        first.version,
+        first.organizer_id,
+        second?.id ?? null,
+        second?.version ?? null,
+        second?.organizer_id ?? null,
+        new Date(expiry),
+      ],
+    );
+    const requestId = result.rows[0].id as number;
+    const owners = [...new Set([first.organizer_id, ...(second ? [second.organizer_id] : [])])];
+    for (const owner of owners) {
+      const ownApproval = kind === 'swap' && owner === actor.id;
+      await db.query(
+        'INSERT INTO meeting_exchange_approvals(request_id,person_id,approved) VALUES ($1,$2,$3)',
+        [requestId, owner, ownApproval],
       );
-  }
-  if (kind === 'swap' && owners.every((owner) => owner === actor.id))
-    return decideExchange(db, actor, requestId, true, true);
-  return { id: requestId, status: 'pending' };
+      if (!ownApproval)
+        await notify(
+          db,
+          owner,
+          kind === 'release' ? messages.roomReleaseRequested : messages.meetingSwapRequested,
+        );
+    }
+    if (kind === 'swap' && owners.every((owner) => owner === actor.id))
+      return decideExchange(db, actor, requestId, true, true);
+    return { id: requestId, status: 'pending' };
+  });
 }
 
 export async function decideExchange(
@@ -102,14 +103,13 @@ export async function decideExchange(
   locked = false,
 ) {
   if (!locked) {
-    await lockSchedule(db);
-    await expireRequests(db);
+    await withRequestExpiry(db, async () => {});
   }
   const request = (
     await db.query('SELECT * FROM meeting_exchange_requests WHERE id=$1 FOR UPDATE', [requestId])
   ).rows[0];
-  if (!request) throw new NotFoundException('הבקשה לא נמצאה');
-  if (request.status !== 'pending') throw new ConflictException('הבקשה כבר אינה ממתינה לאישור');
+  if (!request) throw new NotFoundException(errors.requestNotFound);
+  if (request.status !== 'pending') throw new ConflictException(errors.requestNotPending);
   const approval = await db.query(
     'SELECT 1 FROM meeting_exchange_approvals WHERE request_id=$1 AND person_id=$2',
     [requestId, actor.id],

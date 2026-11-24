@@ -13,11 +13,13 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
-import { Person } from '../../../shared/model';
+import { Person, Site } from '@shared/model';
+import type { AssignableRole } from '@shared/model';
 import { endpoints } from '../endpoints';
 import { buttonSx, panelSx, selectSx, textInputSx } from '../layout';
 import { ErrorLine, Field, useAction } from '../components/Fields';
 import { SiteSelect } from '../components/StationFields';
+import { assignableRoleOptions, defaultSite } from '../options';
 
 export function Users({ saved }: { saved: () => Promise<void> }) {
   const [users, setUsers] = useState<Person[]>([]);
@@ -27,7 +29,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [roomName, setRoomName] = useState('');
-  const [roomSite, setRoomSite] = useState('MID');
+  const [roomSite, setRoomSite] = useState<Site>(defaultSite);
   const roomAction = useAction();
   const action = useAction();
 
@@ -118,7 +120,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
             onChange={(event) => setRoomName(event.target.value)}
           />
         </Field>
-        <SiteSelect value={roomSite} onChange={setRoomSite} />
+        <SiteSelect value={roomSite} onChange={(site) => setRoomSite(site as Site)} />
         <Button sx={buttonSx} variant="contained" type="submit" disabled={roomAction.busy}>
           הוספת חדר ישיבות
         </Button>
@@ -169,7 +171,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                           value={person.role}
                           disabled={action.busy}
                           onChange={(event) => {
-                            const role = event.target.value as 'user' | 'manager' | 'boss';
+                            const role = event.target.value as AssignableRole;
                             void action.run(async () => {
                               await endpoints.users.setRole({ personId: person.id, role });
                               setUsers((previous) =>
@@ -182,9 +184,11 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                             });
                           }}
                         >
-                          <option value="user">עובד/ת</option>
-                          <option value="manager">מנהל/ת</option>
-                          <option value="boss">מנהל/ת בכיר/ה</option>
+                          {assignableRoleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </NativeSelect>
                       </TableCell>
                       <TableCell>

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { Meeting, Person } from '../../../shared/model';
 import { pool, transaction } from '../../db/connection';
-import { expireRequests, lockSchedule } from '../../meetings/requests';
+import { withRequestExpiry } from '../../meetings/requests';
 import { meetingSelect } from '../../meetings/schedule';
 import { visibleConflicts } from '../../meetings/visibility';
 import { concealPrivateMeeting } from '../../common/visibility/privacy';
@@ -14,24 +14,23 @@ export class MeetingRepository {
   async listRoom(room: number, start: string, viewer: Person) {
     const first = DateTime.fromISO(start, { zone });
     return transaction(async (db) => {
-      await lockSchedule(db);
-      await expireRequests(db);
-      const result = await db.query(
-        meetingSelect + ` WHERE m.room_id=$1 AND m.ends>$2 AND m.starts<$3 ORDER BY m.starts`,
-        [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate()],
-      );
-      const allowed = await db.query<{ id: number }>(
-        `SELECT m.id FROM meetings m JOIN people p ON p.id=m.organizer_id
+      return withRequestExpiry(db, async () => {
+        const result = await db.query(
+          meetingSelect + ` WHERE m.room_id=$1 AND m.ends>$2 AND m.starts<$3 ORDER BY m.starts`,
+          [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate()],
+        );
+        const allowed = await db.query<{ id: number }>(
+          `SELECT m.id FROM meetings m JOIN people p ON p.id=m.organizer_id
          WHERE m.room_id=$1 AND (m.organizer_id=$2 OR $3='admin' OR (p.role='manager' AND $3='boss' AND p.supervisor_id=$2)
          OR EXISTS (SELECT 1 FROM meeting_invitations i WHERE i.meeting_id=m.id AND i.person_id=$2 AND i.status<>'declined'))`,
-        [room, viewer.id, viewer.role],
-      );
-      const visible = new Set(allowed.rows.map((row) => row.id));
-      const meetings = result.rows.map((meeting: Meeting) =>
-        meeting.private && !visible.has(meeting.id) ? concealPrivateMeeting(meeting) : meeting,
-      );
-      const holds = await db.query(
-        `SELECT -s.id AS id,s.room_id AS "roomId",r.requester_id AS "organizerId",p.name || ' ' || p.surname AS organizer,
+          [room, viewer.id, viewer.role],
+        );
+        const visible = new Set(allowed.rows.map((row) => row.id));
+        const meetings = result.rows.map((meeting: Meeting) =>
+          meeting.private && !visible.has(meeting.id) ? concealPrivateMeeting(meeting) : meeting,
+        );
+        const holds = await db.query(
+          `SELECT -s.id AS id,s.room_id AS "roomId",r.requester_id AS "organizerId",p.name || ' ' || p.surname AS organizer,
          p.role,CASE WHEN visibility.concealed AND r.requester_id<>$4 AND $5<>'admin' AND (p.role<>'manager' OR $5<>'boss' OR p.supervisor_id IS DISTINCT FROM $4)
            THEN 'פגישה פרטית' ELSE r.title END AS title,
          CASE WHEN visibility.concealed AND r.requester_id<>$4 AND $5<>'admin' AND (p.role<>'manager' OR $5<>'boss' OR p.supervisor_id IS DISTINCT FROM $4)
@@ -44,18 +43,18 @@ export class MeetingRepository {
            OR EXISTS (SELECT 1 FROM meeting_request_slots target JOIN meetings original ON original.id=target.target_meeting_id
              WHERE target.request_id=r.id AND original.private) AS concealed) visibility
          WHERE s.room_id=$1 AND s.ends>$2 AND s.starts<$3 AND r.status='pending' AND r.expires>now()`,
-        [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate(), viewer.id, viewer.role],
-      );
-      return [...meetings, ...holds.rows];
+          [room, first.toJSDate(), first.plus({ days: 14 }).toJSDate(), viewer.id, viewer.role],
+        );
+        return [...meetings, ...holds.rows];
+      });
     });
   }
 
   async listRequests(me: Person) {
     return transaction(async (db) => {
-      await lockSchedule(db);
-      await expireRequests(db);
-      const result = await db.query(
-        `SELECT r.id,r.kind,r.status,r.expires,r.requester_id AS "requesterId",p.name || ' ' || p.surname AS requester,
+      return withRequestExpiry(db, async () => {
+        const result = await db.query(
+          `SELECT r.id,r.kind,r.status,r.expires,r.requester_id AS "requesterId",p.name || ' ' || p.surname AS requester,
          CASE WHEN visibility.concealed AND r.requester_id<>$1 AND $2<>'admin' AND (p.role<>'manager' OR $2<>'boss' OR p.supervisor_id IS DISTINCT FROM $1)
           THEN 'פגישה פרטית' ELSE r.title END AS title,
          CASE WHEN visibility.concealed AND r.requester_id<>$1 AND $2<>'admin' AND (p.role<>'manager' OR $2<>'boss' OR p.supervisor_id IS DISTINCT FROM $1)
@@ -88,9 +87,10 @@ export class MeetingRepository {
          LEFT JOIN meeting_request_approvals a ON a.request_id=r.id
          WHERE r.status='pending' AND (r.requester_id=$1 OR $2='admin' OR EXISTS (SELECT 1 FROM meeting_request_approvals x WHERE x.request_id=r.id AND x.person_id=$1))
          GROUP BY r.id,p.id,visibility.concealed ORDER BY MIN(s.starts)`,
-        [me.id, me.role],
-      );
-      return result.rows;
+          [me.id, me.role],
+        );
+        return result.rows;
+      });
     });
   }
 
@@ -137,11 +137,10 @@ export class MeetingRepository {
 
   async listExchanges(me: Person) {
     return transaction(async (db) => {
-      await lockSchedule(db);
-      await expireRequests(db);
-      return (
-        await db.query(
-          `SELECT r.id,r.kind,r.requester_id AS "requesterId",p.name || ' ' || p.surname AS requester,
+      return withRequestExpiry(db, async () => {
+        return (
+          await db.query(
+            `SELECT r.id,r.kind,r.requester_id AS "requesterId",p.name || ' ' || p.surname AS requester,
          r.expires,m.starts AS start,m.ends AS "end",m.room_id AS "roomId",
          n.starts AS "otherStart",n.ends AS "otherEnd",n.room_id AS "otherRoomId",
          CASE WHEN m.private AND m.organizer_id<>$1 AND $2<>'admin' AND (mo.role<>'manager' OR $2<>'boss' OR mo.supervisor_id IS DISTINCT FROM $1)
@@ -156,9 +155,10 @@ export class MeetingRepository {
          LEFT JOIN people mo ON mo.id=m.organizer_id LEFT JOIN people second_owner ON second_owner.id=n.organizer_id
          LEFT JOIN meeting_exchange_approvals a ON a.request_id=r.id AND a.person_id=$1
          WHERE r.status='pending' AND (r.requester_id=$1 OR a.person_id IS NOT NULL OR $2='admin') ORDER BY r.created`,
-          [me.id, me.role],
-        )
-      ).rows;
+            [me.id, me.role],
+          )
+        ).rows;
+      });
     });
   }
 }

@@ -1,6 +1,8 @@
 import { InputBase, NativeSelect } from '@mui/material';
 import { textInputSx, selectSx } from '../layout';
-import { sites, Site } from '../../../shared/model';
+import { sites, stationOs } from '@shared/model';
+import type { Site } from '@shared/model';
+import type { StationFieldsInput } from '@shared/contracts/common';
 import { Field } from './Fields';
 
 export function SiteSelect({
@@ -48,8 +50,9 @@ export function StationFields({ site }: { site: Site }) {
       </Field>
       <Field label="מערכת הפעלה">
         <NativeSelect disableUnderline inputProps={{ name: 'os' }} sx={selectSx}>
-          <option>Windows</option>
-          <option>Linux</option>
+          {stationOs.map((os) => (
+            <option key={os}>{os}</option>
+          ))}
         </NativeSelect>
       </Field>
       <Field label="תיאור העמדה">
@@ -66,11 +69,11 @@ export function StationFields({ site }: { site: Site }) {
     </>
   );
 }
-export function stationFrom(form: FormData) {
+export function stationFrom(form: FormData): StationFieldsInput {
   return {
-    site: form.get('site'),
-    room: form.get('room'),
-    os: form.get('os'),
-    description: form.get('description'),
+    site: String(form.get('site') ?? '') as StationFieldsInput['site'],
+    room: String(form.get('room') ?? ''),
+    os: String(form.get('os') ?? '') as StationFieldsInput['os'],
+    description: String(form.get('description') ?? ''),
   };
 }

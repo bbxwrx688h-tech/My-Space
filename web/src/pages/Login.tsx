@@ -71,10 +71,15 @@ export function Login({ done }: { done: () => Promise<void> }) {
             sx={{ ...stackSx, mt: '20px' }}
             onSubmit={(e) => {
               e.preventDefault();
-              const data = Object.fromEntries(new FormData(e.currentTarget));
+              const data = new FormData(e.currentTarget);
+              const value = (name: string) => String(data.get(name) ?? '');
               void action.run(async () => {
-                if (mode === 'admin') await endpoints.auth.admin(data);
-                else await endpoints.auth.dev(data);
+                if (mode === 'admin')
+                  await endpoints.auth.admin({
+                    username: value('username'),
+                    password: value('password'),
+                  });
+                else await endpoints.auth.dev({ upn: value('upn') });
                 await done();
               });
             }}

@@ -2,6 +2,16 @@ import { DateTime } from 'luxon';
 
 export const zone = 'Asia/Jerusalem';
 
+/** Meeting slots are quarter-hour ticks from 00:00 through 24:00. */
+export const slotStepMinutes = 15;
+export const slotMinuteOptions = ['00', '15', '30', '45'] as const;
+export const weekendWeekdays = [5, 6] as const;
+export const minutesToClock = (total: number) =>
+  String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+export const slots = Array.from({ length: (24 * 60) / slotStepMinutes }, (_, index) =>
+  minutesToClock(index * slotStepMinutes),
+);
+
 export const local = (value: string) => DateTime.fromISO(value, { zone }).setLocale('he');
 export const now = () => DateTime.now().setZone(zone).setLocale('he');
 export const today = () => now().toISODate()!;
@@ -28,24 +38,19 @@ export function nextMeetingSlot(selectedDate?: string) {
   const current = now();
   let day = selectedDate && selectedDate > current.toISODate()! ? local(selectedDate) : current;
   let minutes = day.hasSame(current, 'day')
-    ? (Math.floor((current.hour * 60 + current.minute) / 15) + 1) * 15
+    ? (Math.floor((current.hour * 60 + current.minute) / slotStepMinutes) + 1) * slotStepMinutes
     : 9 * 60;
   if (minutes >= 1440) {
     day = day.plus({ days: 1 });
     minutes = 9 * 60;
   }
-  while ([5, 6].includes(day.weekday)) {
+  while (weekendWeekdays.some((weekday) => weekday === day.weekday)) {
     day = day.plus({ days: 1 });
     minutes = 9 * 60;
   }
-  function format(total: number) {
-    return (
-      String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0')
-    );
-  }
   return {
     date: day.toISODate()!,
-    from: format(minutes),
-    until: format(Math.min(1440, minutes + 60)),
+    from: minutesToClock(minutes),
+    until: minutesToClock(Math.min(1440, minutes + 60)),
   };
 }

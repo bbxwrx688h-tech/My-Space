@@ -8,8 +8,9 @@ import {
 import { DateTime } from 'luxon';
 import { Person } from '../../../shared/model';
 import { changeDaysBody, publishOfferBody } from '../../../shared/contracts/station';
+import { NotificationService } from '../../common/notifications/notification.service';
 import { messages } from '../../common/notifications/messages';
-import { notify, transaction } from '../../db/connection';
+import { transaction } from '../../db/connection';
 import { stationFields } from '../../../shared/contracts/common';
 import { today } from '../../../shared/time';
 import { parse } from '../../common/validation/parse';
@@ -18,6 +19,8 @@ import { addStation } from '../../stations/station';
 /** Station registration, offer publishing and day booking workflows. */
 @Injectable()
 export class StationService {
+  constructor(private readonly notifications: NotificationService) {}
+
   create(me: Person, body: unknown) {
     const station = parse(stationFields, body);
     return transaction((db) => addStation(db, me.id, station));
@@ -81,7 +84,7 @@ export class StationService {
         for (const row of rows) {
           if (row.borrower_id) {
             const day = DateTime.fromISO(row.day).toFormat('dd/MM/yy');
-            await notify(
+            await this.notifications.send(
               db,
               row.borrower_id,
               messages.stationBookingCanceled(offer.room, offer.site, day),
@@ -104,7 +107,7 @@ export class StationService {
         if (action === 'book') {
           // The owner's notice is written in the same transaction as the booking.
           const dates = [...days].sort().map((day) => DateTime.fromISO(day).toFormat('dd/MM/yy'));
-          await notify(
+          await this.notifications.send(
             db,
             offer.owner_id,
             messages.stationBooked(me.name, me.surname, offer.room, offer.site, dates),

@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules
+dist
+.local
+test-results
+playwright-report
+.DS_Store

@@ -111,6 +111,7 @@ export class StationService {
             db,
             offer.owner_id,
             messages.stationBooked(me.name, me.surname, offer.room, offer.site, dates),
+            { type: 'offer', id: offerId },
           );
         }
       }

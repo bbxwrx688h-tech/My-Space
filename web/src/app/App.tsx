@@ -16,7 +16,7 @@ export function App() {
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
   const [message, setMessage] = useState('');
   const action = useAction();
-  const { page, navigate } = useHashRoute();
+  const { page, route, navigate } = useHashRoute();
   const { data, error, refresh, saved } = useWorkspace({
     onSaved: () => setMessage('השינויים נשמרו'),
     onUnauthorized: () => setPanel(null),
@@ -60,6 +60,7 @@ export function App() {
       <AppShell
         data={data}
         page={page}
+        route={route}
         unread={unread}
         error={error}
         saved={saved}

@@ -16,6 +16,7 @@ const shellWidth = { width: { xs: '94%', sm: 'min(92%,1440px)' }, mx: 'auto' } a
 export function AppShell({
   data,
   page,
+  route,
   unread,
   error,
   saved,
@@ -24,6 +25,7 @@ export function AppShell({
 }: {
   data: Workspace;
   page: Page;
+  route: string;
   unread: number;
   error: string;
   saved: () => Promise<void>;
@@ -126,11 +128,11 @@ export function AppShell({
         {page === 'home' ? (
           <Home data={data} saved={saved} />
         ) : page === 'stations' ? (
-          <Stations data={data} saved={saved} />
+          <Stations key={route} data={data} saved={saved} />
         ) : page === 'calendar' ? (
           <Calendar data={data} saved={saved} />
         ) : page === 'requests' ? (
-          <Requests data={data} saved={saved} />
+          <Requests key={route} data={data} saved={saved} />
         ) : data.me.role === 'admin' ? (
           <Users />
         ) : (

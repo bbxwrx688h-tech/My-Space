@@ -37,15 +37,15 @@ export function NoticePanel({
               </bdi>
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
-              <Button href="#requests" onClick={close}>
-                בקשות והזמנות
-              </Button>
-              <Button href="#calendar" onClick={close}>
-                יומן פגישות
-              </Button>
-              <Button href="#stations" onClick={close}>
-                עמדות עבודה
-              </Button>
+              {selected.targetType && selected.targetId && (
+                <Button
+                  href={`#${selected.targetType === 'offer' ? 'stations' : 'requests'}?target=${selected.targetType}&id=${selected.targetId}`}
+                  onClick={close}
+                >
+                  מעבר לפרטים
+                </Button>
+              )}
+              {!selected.targetType && <Typography>אין קישור לפרטים עבור התראה זו.</Typography>}
               <Button onClick={() => setSelected(null)}>חזרה להתראות</Button>
             </Box>
           </Box>

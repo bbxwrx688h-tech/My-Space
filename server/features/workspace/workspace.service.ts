@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { PoolClient } from 'pg';
 import { Person } from '../../../shared/model';
 import {
   noticeReadBody,
@@ -99,12 +100,19 @@ export class WorkspaceService {
     }
   }
 
+  // The session may have been authenticated before a concurrent demotion.
+  private async requireCurrentAdmin(db: PoolClient, personId: number) {
+    const actor = await db.query('SELECT role FROM people WHERE id=$1', [personId]);
+    if (actor.rows[0]?.role !== 'admin') throw new ForbiddenException(errors.adminRequired);
+  }
+
   role(me: Person, input: Role) {
     if (me.role !== 'admin') throw new ForbiddenException(errors.adminRequired);
     return transaction(async (db) => {
       return withRequestExpiry(db, async () => {
         // Serialize hierarchy changes so role changes cannot invalidate assignments.
         await db.query('SELECT pg_advisory_xact_lock(6349202)');
+        await this.requireCurrentAdmin(db, me.id);
         const target = await db.query(
           "SELECT role FROM people WHERE id=$1 AND source<>'local' FOR UPDATE",
           [input.personId],
@@ -156,6 +164,7 @@ export class WorkspaceService {
     return transaction(async (db) => {
       return withRequestExpiry(db, async () => {
         await db.query('SELECT pg_advisory_xact_lock(6349202)');
+        await this.requireCurrentAdmin(db, me.id);
         const employee = await db.query(
           "SELECT role,supervisor_id FROM people WHERE id=$1 AND source<>'local' FOR UPDATE",
           [input.personId],

@@ -35,7 +35,7 @@ export class WorkspaceRepository {
         [me.id],
       ),
       pool.query(
-        'SELECT id,message,created,seen FROM notices WHERE person_id=$1 ORDER BY id DESC',
+        'SELECT id,message,created,seen,target_type AS "targetType",target_id AS "targetId" FROM notices WHERE person_id=$1 ORDER BY id DESC',
         [me.id],
       ),
     ]);

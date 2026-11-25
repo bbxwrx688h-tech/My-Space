@@ -199,7 +199,10 @@ export async function makeBookingRequest(
       requestId,
       approver,
     ]);
-    await notify(db, approver, messages.meetingRequestSubmitted(actor.name, actor.surname));
+    await notify(db, approver, messages.meetingRequestSubmitted(actor.name, actor.surname), {
+      type: 'request',
+      id: requestId,
+    });
   }
   return { id: requestId, pending: true };
 }
@@ -239,9 +242,9 @@ export async function insertMeetings(db: PoolClient, actorId: number, proposal: 
   // Intentional bulk-notice exception: the per-occurrence date is built in SQL,
   // so this copy must stay in sync with messages.invitedToMeeting.
   await db.query(
-    `INSERT INTO notices(person_id,message)
+    `INSERT INTO notices(person_id,message,target_type,target_id)
      SELECT p.person_id,'הוזמנת לפגישה ״' || $3::text || '״ בתאריך ' ||
-       to_char(m.starts AT TIME ZONE 'Asia/Jerusalem','DD/MM/YYYY HH24:MI') || '.'
+       to_char(m.starts AT TIME ZONE 'Asia/Jerusalem','DD/MM/YYYY HH24:MI') || '.', 'invitation', m.id
      FROM unnest($1::int[],$2::timestamptz[]) AS m(id,starts) CROSS JOIN unnest($4::int[]) AS p(person_id)`,
     [ids, meetings.rows.map((meeting) => meeting.starts), proposal.title, proposal.invitees],
   );
@@ -469,7 +472,11 @@ export async function decideBooking(
             'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
             [slot.target_meeting_id, invitee],
           );
-          if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
+          if (added.rowCount)
+            await notify(db, invitee, messages.invitedToMeeting(request.title), {
+              type: 'invitation',
+              id: slot.target_meeting_id,
+            });
         }
         await db.query(
           'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',
@@ -504,7 +511,11 @@ export async function decideBooking(
           'INSERT INTO meeting_invitations(meeting_id,person_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING person_id',
           [request.target_meeting_id, invitee],
         );
-        if (added.rowCount) await notify(db, invitee, messages.invitedToMeeting(request.title));
+        if (added.rowCount)
+          await notify(db, invitee, messages.invitedToMeeting(request.title), {
+            type: 'invitation',
+            id: request.target_meeting_id,
+          });
       }
       await db.query(
         'UPDATE meetings SET title=$2,description=$3,starts=$4,ends=$5,room_id=$6,private=$7,visit=$8,version=version+1 WHERE id=$1',

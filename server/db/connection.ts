@@ -35,6 +35,11 @@ export async function transaction<T>(action: (db: PoolClient) => Promise<T>): Pr
   }
 }
 
-export function notify(db: PoolClient, personId: number, message: string) {
-  return db.query('INSERT INTO notices(person_id, message) VALUES ($1,$2)', [personId, message]);
+export type NoticeTarget = { type: 'request' | 'exchange' | 'invitation' | 'offer'; id: number };
+
+export function notify(db: PoolClient, personId: number, message: string, target?: NoticeTarget) {
+  return db.query(
+    'INSERT INTO notices(person_id, message, target_type, target_id) VALUES ($1,$2,$3,$4)',
+    [personId, message, target?.type ?? null, target?.id ?? null],
+  );
 }

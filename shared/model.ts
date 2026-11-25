@@ -162,6 +162,8 @@ export interface Notice {
   message: string;
   created: string;
   seen: boolean;
+  targetType: 'request' | 'exchange' | 'invitation' | 'offer' | null;
+  targetId: number | null;
 }
 export interface Workspace {
   me: Person;

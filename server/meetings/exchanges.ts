@@ -87,6 +87,7 @@ export async function createExchange(
           db,
           owner,
           kind === 'release' ? messages.roomReleaseRequested : messages.meetingSwapRequested,
+          { type: 'exchange', id: requestId },
         );
     }
     if (kind === 'swap' && owners.every((owner) => owner === actor.id))

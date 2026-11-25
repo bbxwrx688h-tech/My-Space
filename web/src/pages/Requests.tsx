@@ -14,6 +14,25 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const action = useAction();
+  const params = new URLSearchParams(location.hash.split('?')[1]);
+  const targetType = params.get('target');
+  const targetId = Number(params.get('id'));
+  const target =
+    ['request', 'exchange', 'invitation'].includes(targetType || '') &&
+    Number.isSafeInteger(targetId) &&
+    targetId > 0
+      ? `${targetType}-${targetId}`
+      : null;
+  const targetExists =
+    targetType === 'request'
+      ? requests.some((item) => item.id === targetId)
+      : targetType === 'exchange'
+        ? exchanges.some((item) => item.id === targetId)
+        : invitations.some((item) => item.id === targetId);
+  useEffect(() => {
+    if (!loading && target && targetExists)
+      document.getElementById(target)?.scrollIntoView({ block: 'center' });
+  }, [loading, target, targetExists]);
 
   // App refreshes workspace data after changes and periodically while visible.
   useEffect(() => {
@@ -76,8 +95,20 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
       {!loading && !error && !requests.length && !exchanges.length && !invitations.length && (
         <Typography sx={panelSx}>אין בקשות או הזמנות ממתינות.</Typography>
       )}
+      {!loading && !error && target && !targetExists && (
+        <Typography sx={panelSx}>הפריט אינו זמין עוד או שאין לך גישה אליו.</Typography>
+      )}
       {invitations.map((invitation) => (
-        <Box component="section" sx={panelSx} key={'invite' + invitation.id}>
+        <Box
+          component="section"
+          id={`invitation-${invitation.id}`}
+          sx={{
+            ...panelSx,
+            outline: target === `invitation-${invitation.id}` ? '2px solid' : undefined,
+            outlineColor: 'primary.main',
+          }}
+          key={'invite' + invitation.id}
+        >
           <Typography variant="h3">הזמנה לפגישה · {invitation.title}</Typography>
           <Typography sx={{ my: 1 }}>
             {invitation.organizer} · {roomName(invitation.roomId)} ·{' '}
@@ -117,7 +148,16 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
       {requests.map((request) => {
         const canDecide = data.me.role === 'admin' || request.myApproval === false;
         return (
-          <Box component="section" sx={panelSx} key={'request' + request.id}>
+          <Box
+            component="section"
+            id={`request-${request.id}`}
+            sx={{
+              ...panelSx,
+              outline: target === `request-${request.id}` ? '2px solid' : undefined,
+              outlineColor: 'primary.main',
+            }}
+            key={'request' + request.id}
+          >
             <Typography variant="h3">
               {request.kind === 'takeover'
                 ? 'בקשה להזמנה על חשבון פגישה'
@@ -208,7 +248,16 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
       {exchanges.map((request) => {
         const canDecide = data.me.role === 'admin' || request.myApproval === false;
         return (
-          <Box component="section" sx={panelSx} key={'exchange' + request.id}>
+          <Box
+            component="section"
+            id={`exchange-${request.id}`}
+            sx={{
+              ...panelSx,
+              outline: target === `exchange-${request.id}` ? '2px solid' : undefined,
+              outlineColor: 'primary.main',
+            }}
+            key={'exchange' + request.id}
+          >
             <Typography variant="h3">
               {request.kind === 'release' ? 'בקשה לשחרור חדר' : 'בקשה להחלפת פגישות'}
             </Typography>

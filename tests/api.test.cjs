@@ -125,6 +125,9 @@ test('station offers support partial weeks, separate computers in one room, week
   await publish(noa, first, day, day, 409);
   await publish(uri, first, day, day, 403);
   await days(uri, 'book', a, [dates[0], dates[2], dates[5]]);
+  assert.ok(
+    (await workspace(noa)).notices.some((n) => n.targetType === 'offer' && n.targetId === a),
+  );
   await days(uri, 'book', b, [dates[0], dates[1]], 409);
   await days(tamar, 'book', a, [dates[1], dates[6]]);
   await days(tamar, 'release', a, [dates[0]], 403);
@@ -321,6 +324,11 @@ test('manager requests hold a room, require the assigned boss and expire safely'
   await request(admin, 'POST', 'admin/supervisor', { personId: noa.id, supervisorId: uri.id });
   const pending = await meeting(noa, create('09:00', '10:00'));
   assert.equal(pending.pending, true);
+  assert.ok(
+    (await workspace(uri)).notices.some(
+      (n) => n.targetType === 'request' && n.targetId === pending.id,
+    ),
+  );
   await meeting(admin, create('09:00', '10:00'), 409);
   await request(
     tamar,
@@ -1234,4 +1242,22 @@ test('a boss needs the other manager approval when the manager reports elsewhere
     approve: true,
   });
   assert.ok((await schedule()).some((item) => item.title === 'פגישה חלופית' && !item.pending));
+});
+
+test('stale administrator sessions cannot change roles or hierarchy after demotion', async () => {
+  await role(noa, 'admin');
+  const staleActor = (await workspace(noa)).me;
+  await role(noa, 'user');
+  const { WorkspaceService } = require('../dist/server/features/workspace/workspace.service');
+  const {
+    NotificationService,
+  } = require('../dist/server/common/notifications/notification.service');
+  const service = new WorkspaceService(new NotificationService());
+  await assert.rejects(service.role(staleActor, { personId: uri.id, role: 'admin' }), {
+    status: 403,
+  });
+  await assert.rejects(service.supervisor(staleActor, { personId: uri.id, supervisorId: null }), {
+    status: 403,
+  });
+  assert.equal((await workspace(uri)).me.role, 'user');
 });

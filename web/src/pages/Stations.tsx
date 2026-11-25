@@ -8,7 +8,7 @@ import {
   subtitleSx,
   buttonSx,
 } from '../layout';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Monitor, Plus } from 'lucide-react';
 import { Workspace } from '../../../shared/model';
 import { DateField, ErrorLine } from '../components/Fields';
@@ -21,6 +21,14 @@ export function Stations({ data, saved }: { data: Workspace; saved: () => Promis
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [dialog, setDialog] = useState<'add' | 'publish' | number | null>(null);
+  const params = new URLSearchParams(location.hash.split('?')[1]);
+  const targetId = params.get('target') === 'offer' ? Number(params.get('id')) : 0;
+  const target = Number.isSafeInteger(targetId) && targetId > 0 ? `offer-${targetId}` : null;
+  const targetExists = data.offers.some((item) => item.id === targetId);
+  useEffect(() => {
+    if (target && targetExists)
+      document.getElementById(target)?.scrollIntoView({ block: 'center' });
+  }, [target, targetExists]);
   const close = () => setDialog(null);
   const offer = data.offers.find((o) => o.id === dialog);
   const badRange = !!from && !!to && from > to;
@@ -95,11 +103,15 @@ export function Stations({ data, saved }: { data: Workspace; saved: () => Promis
       </Box>
       <ErrorLine error={badRange ? 'תאריך הסיום קודם לתאריך ההתחלה' : ''} />
       <Box sx={stackSx}>
+        {target && !targetExists && <Typography sx={panelSx}>ההצעה אינה זמינה עוד.</Typography>}
         {!badRange &&
           offers.map((o) => (
             <Box
               component="article"
+              id={`offer-${o.id}`}
               sx={{
+                outline: target === `offer-${o.id}` ? '2px solid' : undefined,
+                outlineColor: 'primary.main',
                 ...panelSx,
                 ...rowSx,
                 flexWrap: 'wrap',

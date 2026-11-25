@@ -405,6 +405,7 @@ export class MeetingChangeService {
                     db,
                     invitee,
                     messages.invitedToMeeting(change.title),
+                    { type: 'invitation', id: slot.targetMeetingId! },
                   );
               }
             }
@@ -549,7 +550,10 @@ export class MeetingChangeService {
               [change.meetingId, invitee],
             );
             if (inserted.rowCount)
-              await this.notifications.send(db, invitee, messages.invitedToMeeting(change.title));
+              await this.notifications.send(db, invitee, messages.invitedToMeeting(change.title), {
+                type: 'invitation',
+                id: change.meetingId,
+              });
           }
         }
         const result = await db.query(

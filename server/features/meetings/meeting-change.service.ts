@@ -239,7 +239,11 @@ export class MeetingChangeService {
           if (
             actor.role === 'manager' ||
             (actor.role === 'boss' &&
-              overlaps.some((m) => m.role === 'boss' && m.organizerId !== actor.id))
+              overlaps.some(
+                (m) =>
+                  m.organizerId !== actor.id &&
+                  (m.role === 'boss' || (m.role === 'manager' && m.ownerSupervisorId !== actor.id)),
+              ))
           )
             return makeBookingRequest(db, actor, proposal, overlaps);
           if (
@@ -324,7 +328,12 @@ export class MeetingChangeService {
             throw new BadRequestException(errors.inviteeNotFound);
           if (
             actor.role === 'boss' &&
-            overlaps.some((meeting) => meeting.role === 'boss' && meeting.organizerId !== actor.id)
+            overlaps.some(
+              (meeting) =>
+                meeting.organizerId !== actor.id &&
+                (meeting.role === 'boss' ||
+                  (meeting.role === 'manager' && meeting.ownerSupervisorId !== actor.id)),
+            )
           ) {
             // A pending series change must not create a second hold, including on
             // occurrences whose time is unchanged until the approval is complete.
@@ -425,7 +434,12 @@ export class MeetingChangeService {
           change.action === 'edit' &&
           actor.role === 'boss' &&
           original &&
-          overlaps.some((meeting) => meeting.role === 'boss' && meeting.organizerId !== actor.id)
+          overlaps.some(
+            (meeting) =>
+              meeting.organizerId !== actor.id &&
+              (meeting.role === 'boss' ||
+                (meeting.role === 'manager' && meeting.ownerSupervisorId !== actor.id)),
+          )
         ) {
           const existing = await db.query<{ person_id: number }>(
             'SELECT person_id FROM meeting_invitations WHERE meeting_id=$1',

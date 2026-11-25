@@ -1,4 +1,5 @@
 import {
+  Autocomplete,
   Box,
   Button,
   InputBase,
@@ -10,27 +11,24 @@ import {
   TableHead,
   TablePagination,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
-import { Person, Site } from '@shared/model';
+import { Person } from '@shared/model';
 import type { AssignableRole } from '@shared/model';
 import { endpoints } from '../endpoints';
 import { buttonSx, panelSx, selectSx, textInputSx } from '../layout';
 import { ErrorLine, Field, useAction } from '../components/Fields';
-import { SiteSelect } from '../components/StationFields';
-import { assignableRoleOptions, defaultSite } from '../options';
+import { assignableRoleOptions } from '../options';
 
-export function Users({ saved }: { saved: () => Promise<void> }) {
+export function Users() {
   const [users, setUsers] = useState<Person[]>([]);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [roomName, setRoomName] = useState('');
-  const [roomSite, setRoomSite] = useState<Site>(defaultSite);
-  const roomAction = useAction();
   const action = useAction();
 
   useEffect(() => {
@@ -99,33 +97,6 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
           />
         </Field>
       </Box>
-      <Box
-        component="form"
-        sx={{ ...panelSx, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'end', gap: 2 }}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void roomAction.run(async () => {
-            await endpoints.users.createRoom({ name: roomName, site: roomSite });
-            setRoomName('');
-            await saved();
-          });
-        }}
-      >
-        <Field label="שם חדר הישיבות">
-          <InputBase
-            sx={textInputSx}
-            required
-            inputProps={{ maxLength: 150 }}
-            value={roomName}
-            onChange={(event) => setRoomName(event.target.value)}
-          />
-        </Field>
-        <SiteSelect value={roomSite} onChange={(site) => setRoomSite(site as Site)} />
-        <Button sx={buttonSx} variant="contained" type="submit" disabled={roomAction.busy}>
-          הוספת חדר ישיבות
-        </Button>
-        <ErrorLine error={roomAction.error} />
-      </Box>
       <ErrorLine error={error || action.error} />
       <Box sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
         {loading ? (
@@ -192,19 +163,20 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                         </NativeSelect>
                       </TableCell>
                       <TableCell>
-                        {person.role !== 'boss' && (
-                          <NativeSelect
-                            disableUnderline
-                            sx={{ ...selectSx, width: 'auto', minWidth: 150 }}
-                            inputProps={{
-                              'aria-label': `ממונה ${person.name} ${person.surname} ${person.upn}`,
-                            }}
-                            value={person.supervisorId ?? ''}
+                        {(person.role === 'user' || person.role === 'manager') && (
+                          <Autocomplete
+                            size="small"
+                            sx={{ minWidth: 220 }}
+                            options={users.filter(
+                              (user) => user.role === (person.role === 'user' ? 'manager' : 'boss'),
+                            )}
+                            value={users.find((user) => user.id === person.supervisorId) ?? null}
+                            getOptionLabel={(user) => `${user.name} ${user.surname} · ${user.upn}`}
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
                             disabled={action.busy}
-                            onChange={(event) => {
-                              const supervisorId = event.target.value
-                                ? Number(event.target.value)
-                                : null;
+                            renderInput={(params) => <TextField {...params} label="חיפוש ממונה" />}
+                            onChange={(_, supervisor) => {
+                              const supervisorId = supervisor?.id ?? null;
                               void action.run(async () => {
                                 await endpoints.users.setSupervisor({
                                   personId: person.id,
@@ -217,19 +189,7 @@ export function Users({ saved }: { saved: () => Promise<void> }) {
                                 );
                               });
                             }}
-                          >
-                            <option value="">ללא ממונה</option>
-                            {users
-                              .filter(
-                                (user) =>
-                                  user.role === (person.role === 'user' ? 'manager' : 'boss'),
-                              )
-                              .map((user) => (
-                                <option key={user.id} value={user.id}>
-                                  {user.name} {user.surname} · {user.upn}
-                                </option>
-                              ))}
-                          </NativeSelect>
+                          />
                         )}
                       </TableCell>
                     </TableRow>

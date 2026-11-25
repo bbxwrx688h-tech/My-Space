@@ -94,6 +94,7 @@ export interface ConflictSnapshot {
   version: number;
   organizerId: number;
   role: string;
+  ownerSupervisorId?: number | null;
 }
 
 export async function makeBookingRequest(
@@ -117,7 +118,11 @@ export async function makeBookingRequest(
     approvers = [
       ...new Set(
         conflicts
-          .filter((m) => m.role === 'boss' && m.organizerId !== actor.id)
+          .filter(
+            (m) =>
+              m.organizerId !== actor.id &&
+              (m.role === 'boss' || (m.role === 'manager' && m.ownerSupervisorId !== actor.id)),
+          )
           .map((m) => m.organizerId),
       ),
     ];
@@ -262,7 +267,7 @@ export async function decideBooking(
       'SELECT 1 FROM meeting_request_approvals WHERE request_id=$1 AND person_id=$2',
       [requestId, actor.id],
     );
-    if (actor.role !== 'admin' && (actor.role !== 'boss' || !permission.rowCount))
+    if (actor.role !== 'admin' && !permission.rowCount)
       throw new ForbiddenException('אין הרשאה לאשר בקשה זו');
     if (!approve) {
       await db.query("UPDATE meeting_requests SET status='rejected' WHERE id=$1", [requestId]);
@@ -406,14 +411,18 @@ export async function decideBooking(
     }
     for (const snapshot of snapshots) {
       const current = await db.query(
-        'SELECT m.version,m.organizer_id,p.role FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
+        'SELECT m.version,m.organizer_id,p.role,p.supervisor_id FROM meetings m JOIN people p ON p.id=m.organizer_id WHERE m.id=$1',
         [snapshot.meeting_id],
       );
       if (
         !current.rowCount ||
         current.rows[0].version !== snapshot.version ||
         current.rows[0].organizer_id !== snapshot.organizer_id ||
-        current.rows[0].role !== snapshot.organizer_role
+        current.rows[0].role !== snapshot.organizer_role ||
+        (current.rows[0].role === 'manager' &&
+          current.rows[0].organizer_id !== request.requester_id &&
+          current.rows[0].supervisor_id !== request.requester_id &&
+          !approvals.some((approval) => approval.person_id === current.rows[0].organizer_id))
       ) {
         await db.query("UPDATE meeting_requests SET status='invalidated' WHERE id=$1", [requestId]);
         await notify(db, request.requester_id, messages.meetingRequestCanceledAfterMeetingChanged);

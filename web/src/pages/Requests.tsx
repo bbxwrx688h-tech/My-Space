@@ -115,8 +115,7 @@ export function Requests({ data, saved }: { data: Workspace; saved: () => Promis
         </Box>
       ))}
       {requests.map((request) => {
-        const canDecide =
-          data.me.role === 'admin' || (data.me.role === 'boss' && request.myApproval === false);
+        const canDecide = data.me.role === 'admin' || request.myApproval === false;
         return (
           <Box component="section" sx={panelSx} key={'request' + request.id}>
             <Typography variant="h3">

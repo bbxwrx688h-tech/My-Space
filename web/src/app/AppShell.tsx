@@ -46,13 +46,14 @@ export function AppShell({
           sx={{
             ...shellWidth,
             ...rowSx,
-            gap: 'clamp(1rem,3vw,3rem)',
+            gap: 'clamp(0.75rem,2vw,2rem)',
             minHeight: 68,
-            '@media (max-width:800px)': { gap: 1.5, flexWrap: 'wrap', py: '10px' },
+            flexWrap: 'wrap',
+            py: '10px',
           }}
         >
           <Link
-            sx={{ color: 'inherit', textDecoration: 'none' }}
+            sx={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}
             href="#home"
             aria-label="My-Space בית"
           >
@@ -62,11 +63,11 @@ export function AppShell({
             component="nav"
             sx={{
               ...rowSx,
-              gap: '10px',
+              gap: '4px',
               flexWrap: 'wrap',
-              order: { xs: 3, sm: 0 },
-              width: { xs: '100%', sm: 'auto' },
-              justifyContent: { xs: 'space-around', sm: 'start' },
+              flex: '1 1 auto',
+              minWidth: 0,
+              '@media (max-width:1050px)': { order: 3, flex: '1 0 100%' },
             }}
             aria-label="ניווט ראשי"
           >
@@ -78,7 +79,7 @@ export function AppShell({
                     color: 'inherit',
                     bgcolor: page === key ? 'primary.main' : 'transparent',
                     textDecoration: 'none',
-                    p: '10px 23px',
+                    p: '10px 14px',
                     borderRadius: '8px',
                     fontSize: '1.14rem',
                     fontWeight: 600,
@@ -131,7 +132,7 @@ export function AppShell({
         ) : page === 'requests' ? (
           <Requests data={data} saved={saved} />
         ) : data.me.role === 'admin' ? (
-          <Users saved={saved} />
+          <Users />
         ) : (
           <Home data={data} saved={saved} />
         )}

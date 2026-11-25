@@ -7,6 +7,7 @@ import { endpoints } from '../endpoints';
 import { clock, endClock, fullDate, local, now, shortDate, sunday } from '../dates';
 import { ErrorLine, Field } from '../components/Fields';
 import { MeetingDialog } from '@app/features/meetings/MeetingDialog';
+import { RoomDialog } from '@app/features/meetings/RoomDialog';
 
 export function Calendar({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [start, setStart] = useState(() => sunday().toISODate()!);
@@ -15,6 +16,7 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
   );
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [error, setError] = useState('');
+  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
   const [dialog, setDialog] = useState<{ date?: string; meeting?: Meeting } | null>(null);
   useEffect(() => {
     let current = true;
@@ -48,19 +50,26 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
         <Box>
           <Typography variant="h1">חדר ישיבות</Typography>
         </Box>
-        {canRequest && (
-          <Button
-            sx={buttonSx}
-            variant="contained"
-            disabled={!!lastAllowed && start > lastAllowed}
-            startIcon={<Plus />}
-            onClick={() =>
-              setDialog({ date: start > now().toISODate()! ? start : now().toISODate()! })
-            }
-          >
-            {data.me.role === 'manager' ? 'בקשת פגישה' : 'פגישה חדשה'}
-          </Button>
-        )}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {data.me.role === 'admin' && (
+            <Button sx={buttonSx} variant="outlined" onClick={() => setRoomDialogOpen(true)}>
+              הוספת חדר ישיבות
+            </Button>
+          )}
+          {canRequest && (
+            <Button
+              sx={buttonSx}
+              variant="contained"
+              disabled={!!lastAllowed && start > lastAllowed}
+              startIcon={<Plus />}
+              onClick={() =>
+                setDialog({ date: start > now().toISODate()! ? start : now().toISODate()! })
+              }
+            >
+              {data.me.role === 'manager' ? 'בקשת פגישה' : 'פגישה חדשה'}
+            </Button>
+          )}
+        </Box>
       </Box>
       <Box sx={filterBarSx}>
         <Field label="חדר ישיבות">
@@ -245,6 +254,9 @@ export function Calendar({ data, saved }: { data: Workspace; saved: () => Promis
           </Box>
         </Box>
       ))}
+      {roomDialogOpen && data.me.role === 'admin' && (
+        <RoomDialog site={data.me.site} close={() => setRoomDialogOpen(false)} saved={saved} />
+      )}
       {dialog && (
         <MeetingDialog
           data={data}

@@ -18,18 +18,56 @@ export function Brand() {
   return (
     <Box
       component="span"
+      dir="ltr"
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
+        flexShrink: 0,
+        whiteSpace: 'nowrap',
         gap: '10px',
         color: 'inherit',
         fontSize: { xs: '1.4rem', sm: '1.75rem' },
         letterSpacing: '-.025em',
       }}
     >
-      <svg viewBox="0 0 30 36" width="31" height="36" aria-hidden="true">
-        <path fill="currentColor" d="M2 5 15 1l13 4v30l-13-3V5L5 8v26l-3 1z" />
-      </svg>
+      <Box
+        component="svg"
+        viewBox="0 0 60 60"
+        aria-hidden="true"
+        sx={{ display: 'block', width: '44px', height: '44px', flex: '0 0 44px' }}
+      >
+        {/* The back and front arcs give the stationary orbit depth around the building. */}
+        <path
+          d="M5 38C2 32 11 23 25 18S51 13 55 19"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          opacity="0.45"
+        />
+        <path fill="currentColor" opacity="0.65" d="M18 20 29 15v29l-11 3z" />
+        <path fill="currentColor" d="M29 15 41 19v27l-12-2z" />
+        <path
+          d="M23 23v19M26 21v21M33 22v19M37 23v19"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1"
+          opacity="0.3"
+        />
+        <path
+          d="M5 38c4 6 17 5 31 0s22-13 19-19"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+        {/* A small angled rocket sits on the near side of the orbit. */}
+        <g transform="translate(43 34) rotate(52)">
+          <path d="M0-9C3-7 4-3 4 1L2 5H-2L-4 1C-4-3-3-7 0-9Z" fill="currentColor" />
+          <path d="M-4 0-7 4-3 3M4 0l3 4-4-1" fill="currentColor" opacity="0.7" />
+          <circle cy="-3" r="1.4" fill="#415a77" />
+          <path d="M-1 6 0 9 1 6" fill="none" stroke="currentColor" strokeWidth="1" />
+        </g>
+      </Box>
       <b dir="ltr">My-Space</b>
     </Box>
   );

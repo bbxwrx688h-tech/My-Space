@@ -1194,3 +1194,44 @@ test('a boss can request approval to move an existing meeting over another boss 
   );
   assert.equal((await pool.query('SELECT 1 FROM meetings WHERE id=$1', [occupied.id])).rowCount, 0);
 });
+
+test('employee administrators can manage roles without granting access to ordinary users', async () => {
+  await role(noa, 'admin');
+  assert.equal((await workspace(noa)).me.role, 'admin');
+  await request(noa, 'POST', 'admin/role', { personId: uri.id, role: 'manager' });
+  assert.equal((await workspace(uri)).me.role, 'manager');
+  await request(uri, 'POST', 'admin/role', { personId: tamar.id, role: 'admin' }, 403);
+  await role(noa, 'user');
+  await request(noa, 'GET', 'admin/users', undefined, 403);
+});
+
+test('a boss needs the other manager approval when the manager reports elsewhere', async () => {
+  await role(noa, 'manager');
+  await role(uri, 'boss');
+  await role(tamar, 'boss');
+  await request(admin, 'POST', 'admin/supervisor', { personId: noa.id, supervisorId: uri.id });
+  const booking = await meeting(noa, create('09:00', '10:00', 'פגישת מנהל'));
+  await request(uri, 'POST', 'meetings/requests/decision', {
+    requestId: booking.id,
+    approve: true,
+  });
+  const proposal = await meeting(tamar, create('09:15', '09:45', 'פגישה חלופית'));
+  assert.equal(proposal.pending, true);
+  assert.ok(
+    (await request(noa, 'GET', 'meetings/requests')).some(
+      (item) => item.id === proposal.id && item.myApproval === false,
+    ),
+  );
+  await request(
+    uri,
+    'POST',
+    'meetings/requests/decision',
+    { requestId: proposal.id, approve: true },
+    403,
+  );
+  await request(noa, 'POST', 'meetings/requests/decision', {
+    requestId: proposal.id,
+    approve: true,
+  });
+  assert.ok((await schedule()).some((item) => item.title === 'פגישה חלופית' && !item.pending));
+});

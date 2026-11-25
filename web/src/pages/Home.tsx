@@ -104,7 +104,7 @@ function Activity({
 export function Home({ data, saved }: { data: Workspace; saved: () => Promise<void> }) {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [activity, setActivity] = useState(0);
-  const [stationDialog, setStationDialog] = useState<'add' | 'publish' | null>(null);
+  const [stationDialog, setStationDialog] = useState(false);
   const [days, setDays] = useState<{ id: number; mode: 'release' | 'withdraw' } | null>(null);
   const offer = data.offers.find((o) => o.id === days?.id);
   return (
@@ -156,10 +156,16 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
             <Button
               sx={{ ...buttonSx, minHeight: 47, color: 'inherit', borderColor: 'currentColor' }}
               variant="outlined"
-              onClick={() => setStationDialog(data.stations.length ? 'publish' : 'add')}
+              disabled={data.stations.length === 0}
+              onClick={() => setStationDialog(true)}
             >
               פרסום הצעה לעמדה שלי
             </Button>
+            {data.stations.length === 0 && (
+              <Typography variant="body2" sx={{ width: '100%', color: 'inherit' }}>
+                כדי לפרסם הצעה יש להוסיף עמדה בעמוד עמדות העבודה.
+              </Typography>
+            )}
           </Box>
         </Box>
         <Box
@@ -278,12 +284,10 @@ export function Home({ data, saved }: { data: Workspace; saved: () => Promise<vo
       )}
       {stationDialog && (
         <PublishDialog
-          key={stationDialog}
           data={data}
-          close={() => setStationDialog(null)}
+          close={() => setStationDialog(false)}
           saved={saved}
-          add={stationDialog === 'add'}
-          onAdded={() => setStationDialog('publish')}
+          add={false}
         />
       )}
       {offer && days && (

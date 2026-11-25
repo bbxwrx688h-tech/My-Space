@@ -4,8 +4,8 @@ export type Site = (typeof sites)[number];
 export const roles = ['user', 'manager', 'boss', 'admin'] as const;
 export type Role = (typeof roles)[number];
 
-// Admins are assigned outside the role editor.
-export const assignableRoles = ['user', 'manager', 'boss'] as const;
+// Administrators can assign all application roles to employees.
+export const assignableRoles = ['user', 'manager', 'boss', 'admin'] as const;
 export type AssignableRole = (typeof assignableRoles)[number];
 
 export const stationOs = ['Windows', 'Linux'] as const;
